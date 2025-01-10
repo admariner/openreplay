@@ -3,7 +3,7 @@ from chalicelib.core import integration_base
 from chalicelib.core.integration_jira_cloud_issue import JIRACloudIntegrationIssue
 from chalicelib.utils import pg_client, helper
 
-PROVIDER = schemas.IntegrationType.jira
+PROVIDER = schemas.IntegrationType.JIRA
 
 
 def obfuscate_string(string):
@@ -19,11 +19,13 @@ class JIRAIntegration(integration_base.BaseIntegration):
         self._user_id = user_id
         self.integration = self.get()
 
-        if self.integration is None:
-            return
-        self.integration["valid"] = True
-        if not self.integration["url"].endswith('atlassian.net'):
-            self.integration["valid"] = False
+    @staticmethod
+    def __validate(data):
+        data["valid"] = JIRAIntegration.__is_valid_url(data["url"])
+
+    @staticmethod
+    def __is_valid_url(url):
+        return url.endswith('atlassian.net') or url.endswith('atlassian.net/')
 
     @property
     def provider(self):
@@ -31,7 +33,7 @@ class JIRAIntegration(integration_base.BaseIntegration):
 
     @property
     def issue_handler(self):
-        if self.integration["url"].endswith('atlassian.net') and self._issue_handler is None:
+        if JIRAIntegration.__is_valid_url(self.integration["url"]) and self._issue_handler is None:
             try:
                 self._issue_handler = JIRACloudIntegrationIssue(token=self.integration["token"],
                                                                 username=self.integration["username"],
@@ -39,6 +41,7 @@ class JIRAIntegration(integration_base.BaseIntegration):
             except Exception as e:
                 self._issue_handler = None
                 self.integration["valid"] = False
+                return {"errors": ["Something went wrong, please check your JIRA credentials."]}
         return self._issue_handler
 
     # TODO: remove this once jira-oauth is done
@@ -55,9 +58,7 @@ class JIRAIntegration(integration_base.BaseIntegration):
 
         if data is None:
             return
-        data["valid"] = True
-        if not data["url"].endswith('atlassian.net'):
-            data["valid"] = False
+        JIRAIntegration.__validate(data)
         return data
 
     def get_obfuscated(self):
@@ -81,16 +82,17 @@ class JIRAIntegration(integration_base.BaseIntegration):
                              **changes})
             )
             w = helper.dict_to_camel_case(cur.fetchone())
+            JIRAIntegration.__validate(w)
             if obfuscate:
                 w["token"] = obfuscate_string(w["token"])
-        return self.get()
+        return w
 
     # TODO: make this generic for all issue tracking integrations
     def _add(self, data):
         print("a pretty defined abstract method")
         return
 
-    def add(self, username, token, url):
+    def add(self, username, token, url, obfuscate=False):
         with pg_client.PostgresClient() as cur:
             cur.execute(
                 cur.mogrify("""\
@@ -101,7 +103,11 @@ class JIRAIntegration(integration_base.BaseIntegration):
                              "token": token, "url": url})
             )
             w = helper.dict_to_camel_case(cur.fetchone())
-        return self.get()
+            JIRAIntegration.__validate(w)
+            if obfuscate:
+                w["token"] = obfuscate_string(w["token"])
+
+        return w
 
     def delete(self):
         with pg_client.PostgresClient() as cur:
@@ -113,21 +119,21 @@ class JIRAIntegration(integration_base.BaseIntegration):
             )
             return {"state": "success"}
 
-    def add_edit(self, data):
+    def add_edit(self, data: schemas.IssueTrackingJiraSchema):
         if self.integration is not None:
             return self.update(
                 changes={
-                    "username": data["username"],
-                    "token": data["token"] \
-                        if data.get("token") and len(data["token"]) > 0 and data["token"].find("***") == -1 \
-                        else self.integration["token"],
-                    "url": data["url"]
+                    "username": data.username,
+                    "token": data.token if len(data.token) > 0 and data.token.find("***") == -1 \
+                        else self.integration.token,
+                    "url": str(data.url)
                 },
                 obfuscate=True
             )
         else:
             return self.add(
-                username=data["username"],
-                token=data["token"],
-                url=data["url"]
+                username=data.username,
+                token=data.token,
+                url=str(data.url),
+                obfuscate=True
             )

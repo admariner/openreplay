@@ -1,14 +1,15 @@
 package router
 
 import (
-	gzip "github.com/klauspost/pgzip"
 	"io"
-	"io/ioutil"
-	"log"
 	"net/http"
+	"time"
+
+	gzip "github.com/klauspost/pgzip"
 )
 
 func (e *Router) pushMessages(w http.ResponseWriter, r *http.Request, sessionID uint64, topicName string) {
+	start := time.Now()
 	body := http.MaxBytesReader(w, r.Body, e.cfg.BeaconSizeLimit)
 	defer body.Close()
 
@@ -17,24 +18,24 @@ func (e *Router) pushMessages(w http.ResponseWriter, r *http.Request, sessionID 
 
 	switch r.Header.Get("Content-Encoding") {
 	case "gzip":
-		log.Println("Gzip", reader)
-
 		reader, err = gzip.NewReader(body)
 		if err != nil {
-			ResponseWithError(w, http.StatusInternalServerError, err) // TODO: stage-dependent response
+			e.ResponseWithError(r.Context(), w, http.StatusInternalServerError, err, start, r.URL.Path, 0)
 			return
 		}
-		//log.Println("Gzip reader init", reader)
 		defer reader.Close()
 	default:
 		reader = body
 	}
-	//log.Println("Reader after switch:", reader)
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
-		ResponseWithError(w, http.StatusInternalServerError, err) // TODO: send error here only on staging
+		e.ResponseWithError(r.Context(), w, http.StatusInternalServerError, err, start, r.URL.Path, 0)
 		return
 	}
-	e.services.Producer.Produce(topicName, sessionID, buf) // What if not able to send?
+	if err := e.services.Producer.Produce(topicName, sessionID, buf); err != nil {
+		e.ResponseWithError(r.Context(), w, http.StatusInternalServerError, err, start, r.URL.Path, 0)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
+	e.log.Info(r.Context(), "response ok")
 }

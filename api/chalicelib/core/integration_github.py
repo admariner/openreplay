@@ -3,7 +3,7 @@ from chalicelib.core import integration_base
 from chalicelib.core.integration_github_issue import GithubIntegrationIssue
 from chalicelib.utils import pg_client, helper
 
-PROVIDER = schemas.IntegrationType.github
+PROVIDER = schemas.IntegrationType.GITHUB
 
 
 class GitHubIntegration(integration_base.BaseIntegration):
@@ -24,8 +24,7 @@ class GitHubIntegration(integration_base.BaseIntegration):
         integration = self.get()
         if integration is None:
             return None
-        token = "*" * (len(integration["token"]) - 4) + integration["token"][-4:]
-        return {"token": token, "provider": self.provider.lower()}
+        return {"token": helper.obfuscate(text=integration["token"]), "provider": self.provider.lower()}
 
     def update(self, changes, obfuscate=False):
         with pg_client.PostgresClient() as cur:
@@ -40,12 +39,14 @@ class GitHubIntegration(integration_base.BaseIntegration):
                              **changes})
             )
             w = helper.dict_to_camel_case(cur.fetchone())
+            if w and w.get("token") and obfuscate:
+                w["token"] = helper.obfuscate(w["token"])
             return w
 
     def _add(self, data):
         pass
 
-    def add(self, token):
+    def add(self, token, obfuscate=False):
         with pg_client.PostgresClient() as cur:
             cur.execute(
                 cur.mogrify("""\
@@ -56,6 +57,8 @@ class GitHubIntegration(integration_base.BaseIntegration):
                              "token": token})
             )
             w = helper.dict_to_camel_case(cur.fetchone())
+            if w and w.get("token") and obfuscate:
+                w["token"] = helper.obfuscate(w["token"])
             return w
 
     # TODO: make a revoke token call
@@ -69,16 +72,15 @@ class GitHubIntegration(integration_base.BaseIntegration):
             )
             return {"state": "success"}
 
-    def add_edit(self, data):
+    def add_edit(self, data: schemas.IssueTrackingGithubSchema):
         s = self.get()
         if s is not None:
             return self.update(
                 changes={
-                    "token": data["token"] \
-                        if data.get("token") and len(data["token"]) > 0 and data["token"].find("***") == -1 \
-                        else s["token"]
+                    "token": data.token if len(data.token) > 0 and data.token.find("***") == -1 \
+                        else s.token
                 },
                 obfuscate=True
             )
         else:
-            return self.add(token=data["token"])
+            return self.add(token=data.token, obfuscate=True)

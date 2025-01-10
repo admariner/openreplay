@@ -12,37 +12,75 @@ npm i @openreplay/tracker-graphql
 
 Initialize the `@openreplay/tracker` package as usual and load the plugin into it.
 The `plugin` call will return the function, which receives four variables
-`operationKind`, `operationName`, `variables`, `result`
-and returns `result` without changes.
+`operationKind`, `operationName`, `variables`, `result` and `duration` (default 0)
+
+returns `result` without changes.
 
 ```js
 import Tracker from '@openreplay/tracker';
-import trackerGraphQL from '@openreplay/tracker-graphql';
+import { createGraphqlMiddleware } from '@openreplay/tracker-graphql';
 
 const tracker = new Tracker({
   projectKey: YOUR_PROJECT_KEY,
 });
 
-export const recordGraphQL = tracker.plugin(trackerGraphQL());
+export const recordGraphQL = tracker.use(createGraphqlMiddleware());
 ```
 
 ### Relay
 
-For [Relay](https://relay.dev/) you should manually put `recordGraphQL` call
+If you're using [Relay network tools](https://github.com/relay-tools/react-relay-network-modern),
+you can simply [create a middleware](https://github.com/relay-tools/react-relay-network-modern/tree/master?tab=readme-ov-file#example-of-injecting-networklayer-with-middlewares-on-the-client-side)
+
+```js
+import { createRelayMiddleware } from '@openreplay/tracker-graphql';
+
+const trackerMiddleware = tracker.use(createRelayMiddleware());
+
+const network = new RelayNetworkLayer([
+  // your middleware
+  // ,
+  trackerMiddleware,
+]);
+```
+
+You can pass a Sanitizer function to `createRelayMiddleware` to sanitize the variables and data before sending them to OpenReplay.
+
+```js
+const trackerLink = tracker.use(
+  createRelayMiddleware((variables) => {
+    return {
+      ...variables,
+      password: '***',
+    };
+  }),
+);
+```
+
+Or you can manually put `recordGraphQL` call
 to the `NetworkLayer` implementation. If you are standard `Network.create` way to implement it,
 then you should do something like below
 
 ```js
-import { recordGraphQL } from 'tracker'; // see above for recordGraphQL definition
+import { createGraphqlMiddleware } from '@openreplay/tracker-graphql'; // see above for recordGraphQL definition
 import { Environment } from 'relay-runtime';
+
+const handler = tracker.use(createGraphqlMiddleware());
 
 function fetchQuery(operation, variables, cacheConfig, uploadables) {
   return fetch('www.myapi.com/resource', {
     // ...
   })
-    .then(response => response.json())
-    .then(result =>
-      recordGraphQL(operation.operationKind, operation.name, variables, result),
+    .then((response) => response.json())
+    .then((result) =>
+      handler(
+        // op kind, name, variables, response, duration (default 0)
+        operation.operationKind,
+        operation.name,
+        variables,
+        result,
+        duration,
+      ),
     );
 }
 
@@ -53,22 +91,49 @@ See [Relay Network Layer](https://relay.dev/docs/en/network-layer) for details.
 
 ### Apollo
 
-For [Apollo](https://www.apollographql.com/) you should create a new `ApolloLink` with
-`recordGraphQL` call and put it to your chain like below
+For [Apollo](https://www.apollographql.com/) you should create a new `ApolloLink`
 
 ```js
-import { recordGraphQL } from 'tracker'; // see above for recordGraphQL definition
+import { createTrackerLink } from '@openreplay/tracker-graphql';
+
+const trackerLink = tracker.use(createTrackerLink());
+const yourLink = new ApolloLink(trackerLink);
+```
+
+You can pass a Sanitizer function to `createRelayMiddleware` to sanitize the variables and data before sending them to OpenReplay.
+
+```js
+const trackerLink = tracker.use(
+  createTrackerLink((variables) => {
+    return {
+      ...variables,
+      password: '***',
+    };
+  }),
+);
+```
+
+Alternatively you can use generic graphql handler:
+
+```js
+import { createGraphqlMiddleware } from '@openreplay/tracker-graphql'; // see above for recordGraphQL definition
 import { ApolloLink } from 'apollo-link';
 
+const handler = tracker.use(createGraphqlMiddleware());
+
 const trackerApolloLink = new ApolloLink((operation, forward) => {
-  return forward(operation).map(result =>
-    recordGraphQL(
+  operation.setContext({ start: performance.now() });
+  return forward(operation).map((result) => {
+    const time = performance.now() - operation.getContext().start;
+    return handler(
+      // op kind, name, variables, response, duration (default 0)
       operation.query.definitions[0].operation,
       operation.operationName,
       operation.variables,
       result,
-    ),
-  );
+      time,
+    );
+  });
 });
 
 const link = ApolloLink.from([

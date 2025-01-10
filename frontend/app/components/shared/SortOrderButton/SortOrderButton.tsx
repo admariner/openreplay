@@ -1,6 +1,6 @@
 import React from 'react';
-import { Icon, Tooltip } from 'UI';
-import cn from 'classnames';
+import { Segmented } from 'antd';
+import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
 
 interface Props {
   sortOrder: string;
@@ -11,30 +11,23 @@ export default React.memo(function SortOrderButton(props: Props) {
   const isAscending = sortOrder === 'asc';
 
   return (
-    <div className="flex items-center border">
-      <Tooltip title={'Ascending'}>
-        <div
-          className={cn('p-2 hover:bg-active-blue', {
-            'cursor-pointer bg-white': !isAscending,
-            'bg-active-blue pointer-events-none': isAscending,
-          })}
-          onClick={() => onChange('asc')}
-        >
-          <Icon name="arrow-up" size="14" color={isAscending ? 'teal' : 'gray-medium'} />
-        </div>
-      </Tooltip>
+    <div className="rounded-full">
 
-      <Tooltip title={'Descending'}>
-        <div
-          className={cn('p-2 hover:bg-active-blue border-l', {
-            'cursor-pointer bg-white': isAscending,
-            'bg-active-blue pointer-events-none': !isAscending,
-          })}
-          onClick={() => onChange('desc')}
-        >
-          <Icon name="arrow-down" size="14" color={!isAscending ? 'teal' : 'gray-medium'} />
-        </div>
-      </Tooltip>
+          <Segmented
+            size='small'
+            options={[
+              { label: 'Ascending', value: 'Ascending', icon: <ArrowUpOutlined /> },
+              { label: 'Descending', value: 'Descending', icon: <ArrowDownOutlined /> },
+            ]}
+            defaultValue="Ascending"
+            onChange={(value) => {
+              if (value === 'Ascending') {
+                onChange('asc');
+              } else if (value === 'Descending') {
+                onChange('desc');
+              }
+            }}
+          />
     </div>
   );
 });

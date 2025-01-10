@@ -49,9 +49,10 @@ function ListingVisibility() {
                         value={durationSettings.count}
                         type="number"
                         name="count"
+                        min={0}
                         placeholder="E.g 10"
                         onChange={({ target: { value } }: any) => {
-                            changeSettings({ count: value })
+                            changeSettings({ count: value > 0 ? value : '' })
                         }}
                     />
                 </div>

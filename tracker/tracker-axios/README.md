@@ -1,3 +1,6 @@
+## this plugin is deprecated, all network tracking apis are moved into the main tracker codebase
+______
+
 # OpenReplay Tracker Axios plugin
 
 Tracker plugin to support tracking of the [Axios](https://axios-http.com/) requests.
@@ -19,7 +22,8 @@ import trackerAxios from '@openreplay/tracker-axios';
 const tracker = new Tracker({
   projectKey: YOUR_PROJECT_KEY,
 });
-tracker.start();
+// .start() returns a promise
+tracker.start().then(sessionData => ... ).catch(e => ... )
 
 tracker.use(trackerAxios({ /* options here*/ }));
 ```

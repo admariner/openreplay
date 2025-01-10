@@ -1,9 +1,9 @@
 import React from 'react';
-import { NoContent } from 'UI';
+import { NoContent, Icon } from 'UI';
 import { Styles } from '../../common';
-import { 
-    BarChart, Bar, CartesianGrid, Tooltip,
-    LineChart, Line, Legend, ResponsiveContainer, 
+import {
+    CartesianGrid, Tooltip,
+    LineChart, Line, Legend, ResponsiveContainer,
     XAxis, YAxis
   } from 'recharts';
 
@@ -16,7 +16,12 @@ function CallsErrors5xx(props: Props) {
     return (
         <NoContent
           size="small"
-          title="No data available"
+          title={
+            <div className="flex items-center">
+              <Icon name="info-circle" className="mr-2" size="14" />
+              No data available for the selected period.
+            </div>
+          }
           show={ metric.data.chart.length === 0 }
           style={ { height: '240px' } }
         >
@@ -36,7 +41,7 @@ function CallsErrors5xx(props: Props) {
                 label={{ ...Styles.axisLabelLeft, value: "Number of Errors" }}
                 allowDecimals={false}
               />
-              <Legend />
+              {/*<Legend />*/}
               <Tooltip {...Styles.tooltip} />
               { Array.isArray(metric.data.namesMap) && metric.data.namesMap.map((key, index) => (
                 <Line key={key} name={key} type="monotone" dataKey={key} stroke={Styles.colors[index]} fillOpacity={ 1 } strokeWidth={ 2 } strokeOpacity={ 0.8 } fill="url(#colorCount)" dot={false} />

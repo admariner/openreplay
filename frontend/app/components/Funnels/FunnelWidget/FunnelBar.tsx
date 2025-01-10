@@ -1,25 +1,33 @@
+import { durationFormatted } from 'App/date';
 import React from 'react';
 import FunnelStepText from './FunnelStepText';
-import { Icon, Tooltip } from 'UI';
+import { Icon } from 'UI';
+import { Space } from 'antd';
+import { Styles } from 'Components/Dashboard/Widgets/common';
 
 interface Props {
   filter: any;
-  isFirst: boolean
+  index?: number;
+  focusStage?: (index: number, isFocused: boolean) => void;
+  focusedFilter?: number | null;
+  metricLabel?: string;
 }
-function FunnelBar(props: Props) {
-  const { filter, isFirst = false } = props;
 
+function FunnelBar(props: Props) {
+  const { filter, index, focusStage, focusedFilter, metricLabel = 'Sessions' } = props;
+
+  const isFocused = focusedFilter && index ? focusedFilter === index - 1 : false;
   return (
     <div className="w-full mb-4">
       <FunnelStepText filter={filter} />
       <div
         style={{
           height: '25px',
-          width: '100%',
+          width: '99.8%',
           backgroundColor: '#f5f5f5',
           position: 'relative',
-          borderRadius: '3px',
-          overflow: 'hidden',
+          borderRadius: '.5rem',
+          overflow: 'hidden'
         }}
       >
         <div
@@ -30,54 +38,103 @@ function FunnelBar(props: Props) {
             top: 0,
             left: 0,
             bottom: 0,
-            backgroundColor: '#00b5ad',
+            backgroundColor: Styles.compareColors[1]
           }}
         >
           <div className="color-white absolute right-0 flex items-center font-medium mr-2 leading-3">
             {filter.completedPercentageTotal}%
           </div>
         </div>
-        {/* {filter.dropDueToIssues > 0 && (
-          <div
-            className="flex items-center"
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: `${filter.completedPercentage}%`,
-              opacity: 0.5,
-              padding: '4px',
-            }}
-          >
-            <div
-              className="stripes relative"
-              style={{
-                width: `${filter.dropDueToIssuesPercentage}%`,
-                height: '16px',
-              }}
-            >
-              <Tooltip title={`${filter.dropDueToIssues} (${filter.dropDueToIssuesPercentage}%) Dropped due to issues`} position="top-start">
-                <div className="w-full h-8 absolute"/>
-              </Tooltip>
-            </div>
-          </div>
-        )} */}
+        <div
+          style={{
+            width: `${100.1 - filter.completedPercentageTotal}%`,
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: isFocused ? 'rgba(204, 0, 0, 0.3)' : '#fff0f0',
+            cursor: 'pointer'
+          }}
+          onClick={() => focusStage?.(index! - 1, filter.isActive)}
+          className={'hover:opacity-75'}
+        />
       </div>
       <div className="flex justify-between py-2">
         {/* @ts-ignore */}
         <div className="flex items-center">
           <Icon name="arrow-right-short" size="20" color="green" />
-          <span className="mx-1 font-medium">{filter.sessionsCount} Sessions</span>
+          <span className="mx-1">{filter.count} {metricLabel}</span>
           <span className="color-gray-medium text-sm">
             ({filter.completedPercentage}%) Completed
           </span>
         </div>
+        {index && index > 1 && (
+          <Space className="items-center">
+            <Icon name="caret-down-fill" color={filter.droppedCount > 0 ? 'red' : 'gray-light'} size={16} />
+            <span
+              className={'mx-1 ' + (filter.droppedCount > 0 ? 'color-red' : 'disabled')}>{filter.droppedCount} {metricLabel}</span>
+            <span
+              className={'text-sm ' + (filter.droppedCount > 0 ? 'color-red' : 'disabled')}>({filter.droppedPercentage}%) Dropped</span>
+          </Space>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function UxTFunnelBar(props: Props) {
+  const { filter } = props;
+
+  return (
+    <div className="w-full mb-4">
+      <div className={'font-medium'}>{filter.title}</div>
+      <div
+        style={{
+          height: '25px',
+          width: '99.8%',
+          backgroundColor: '#f5f5f5',
+          position: 'relative',
+          borderRadius: '.5rem',
+          overflow: 'hidden'
+        }}
+      >
+        <div
+          className="flex items-center"
+          style={{
+            width: `${(filter.completed / (filter.completed + filter.skipped)) * 100}%`,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            backgroundColor: '#6272FF'
+          }}
+        >
+          <div className="color-white absolute right-0 flex items-center font-medium mr-2 leading-3">
+            {((filter.completed / (filter.completed + filter.skipped)) * 100).toFixed(1)}%
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-between py-2">
+        {/* @ts-ignore */}
+        <div className={'flex items-center gap-4'}>
+          <div className="flex items-center">
+            <Icon name="arrow-right-short" size="20" color="green" />
+            <span className="mx-1 font-medium">{filter.completed}</span><span>completed this step</span>
+          </div>
+          <div className={'flex items-center'}>
+            <Icon name="clock" size="16" />
+            <span className="mx-1 font-medium">
+              {durationFormatted(filter.avgCompletionTime)}
+            </span>
+            <span>
+              avg. completion time
+            </span>
+          </div>
+        </div>
         {/* @ts-ignore */}
         <div className="flex items-center">
           <Icon name="caret-down-fill" color="red" size={16} />
-          <span className="font-medium mx-1 color-red">{filter.droppedCount} Sessions</span>
-          <span className="text-sm color-red">({filter.droppedPercentage}%) Dropped</span>
+          <span className="font-medium mx-1">{filter.skipped}</span><span> skipped</span>
         </div>
       </div>
     </div>

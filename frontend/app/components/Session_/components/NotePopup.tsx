@@ -1,49 +1,41 @@
+import CreateNote from 'Components/Session_/Player/Controls/components/CreateNote';
 import React from 'react';
-import { Button } from 'UI';
-import { connectPlayer, pause } from 'Player';
-import { connect } from 'react-redux';
-import { setCreateNoteTooltip } from 'Duck/sessions';
-import GuidePopup, { FEATURE_KEYS } from 'Shared/GuidePopup';
+import { observer } from 'mobx-react-lite';
+import { useStore } from 'App/mstore';
+import { PlayerContext } from 'App/components/Session/playerContext';
+import { Button, Tooltip } from 'antd';
+import { MessageOutlined } from '@ant-design/icons';
+import { useModal } from 'App/components/Modal';
 
-function NotePopup({
-  setCreateNoteTooltip,
-  time,
-  tooltipActive,
-}: {
-  setCreateNoteTooltip: (args: any) => void;
-  time: number;
-  tooltipActive: boolean;
-}) {
+function NotePopup() {
+  const { sessionStore } = useStore();
+  const tooltipActive = sessionStore.createNoteTooltip.isVisible;
+  const { player, store } = React.useContext(PlayerContext);
+  const { showModal, hideModal } = useModal();
   const toggleNotePopup = () => {
     if (tooltipActive) return;
-    pause();
-    setCreateNoteTooltip({ time: time, isVisible: true });
+    player.pause();
+    showModal(
+      <CreateNote hideModal={hideModal} isEdit={false} time={Math.round(store.get().time)} />,
+      {
+        right: true,
+        width: 380,
+      }
+    );
   };
 
-  React.useEffect(() => {
-    return () => setCreateNoteTooltip({ time: -1, isVisible: false });
-  }, []);
-
   return (
-    <GuidePopup
-      title="Introducing Notes"
-      description={'Annotate session replays and share your feedback with the rest of your team.'}
-    >
-      <Button icon="quotes" variant="text" disabled={tooltipActive} onClick={toggleNotePopup}>
-        Add Note
+    <Tooltip title={'Add Note'} placement='bottom'>
+      <Button
+        size={'small'}
+        className={'flex items-center justify-center'}
+        onClick={toggleNotePopup}
+        disabled={tooltipActive}
+      >
+        <MessageOutlined />
       </Button>
-    </GuidePopup>
+    </Tooltip>
   );
 }
 
-const NotePopupPl = connectPlayer(
-  // @ts-ignore
-  (state) => ({ time: state.time })
-)(React.memo(NotePopup));
-
-const NotePopupComp = connect(
-  (state: any) => ({ tooltipActive: state.getIn(['sessions', 'createNoteTooltip', 'isVisible']) }),
-  { setCreateNoteTooltip }
-)(NotePopupPl);
-
-export default React.memo(NotePopupComp);
+export default observer(NotePopup)

@@ -3,14 +3,14 @@ import queue
 import re
 from typing import Optional, List
 
+from apscheduler.triggers.interval import IntervalTrigger
 from decouple import config
-from fastapi import Request, Response
+from fastapi import Request, Response, BackgroundTasks
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 import app as main_app
 import schemas
-import schemas_ee
 from chalicelib.utils import pg_client, helper
 from chalicelib.utils.TimeUTC import TimeUTC
 from schemas import CurrentContext
@@ -64,22 +64,11 @@ class TraceSchema(BaseModel):
 
 
 def __process_trace(trace: TraceSchema):
-    data = trace.dict()
+    data = trace.model_dump()
     data["parameters"] = json.dumps(trace.parameters) if trace.parameters is not None and len(
         trace.parameters.keys()) > 0 else None
     data["payload"] = json.dumps(trace.payload) if trace.payload is not None and len(trace.payload.keys()) > 0 else None
     return data
-
-
-async def write_trace(trace: TraceSchema):
-    data = __process_trace(trace)
-    with pg_client.PostgresClient() as cur:
-        cur.execute(
-            cur.mogrify(
-                f"""INSERT INTO traces(user_id, tenant_id, created_at, auth, action, method, path_format, endpoint, payload, parameters, status)
-                    VALUES (%(user_id)s, %(tenant_id)s, %(created_at)s, %(auth)s, %(action)s, %(method)s, %(path_format)s, %(endpoint)s, %(payload)s::jsonb, %(parameters)s::jsonb, %(status)s);""",
-                data)
-        )
 
 
 async def write_traces_batch(traces: List[TraceSchema]):
@@ -109,10 +98,14 @@ async def process_trace(action: str, path_format: str, request: Request, respons
     current_context: CurrentContext = request.state.currentContext
     body: json = None
     if request.method in ["POST", "PUT", "DELETE"]:
-        body = await request.json()
-        intersect = list(set(body.keys()) & set(IGNORE_IN_PAYLOAD))
-        for attribute in intersect:
-            body[attribute] = "HIDDEN"
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        if body:
+            intersect = list(set(body.keys()) & set(IGNORE_IN_PAYLOAD))
+            for attribute in intersect:
+                body[attribute] = "HIDDEN"
     current_trace = TraceSchema(tenant_id=current_context.tenant_id,
                                 user_id=current_context.user_id if isinstance(current_context, CurrentContext) \
                                     else None,
@@ -136,11 +129,12 @@ def trace(action: str, path_format: str, request: Request, response: Response):
             or isinstance(p["path"], re.Pattern) and re.search(p["path"], path_format)) \
                 and (p["method"][0] == "*" or request.method in p["method"]):
             return
-    background_task: BackgroundTask = BackgroundTask(process_trace, action, path_format, request, response)
+    background_task: BackgroundTask = BackgroundTask(process_trace, action=action, path_format=path_format,
+                                                     request=request, response=response)
     if response.background is None:
-        response.background = background_task
-    else:
-        response.background.add_task(background_task.func, *background_task.args, *background_task.kwargs)
+        response.background = BackgroundTasks()
+
+    response.background.add_task(background_task)
 
 
 async def process_traces_queue():
@@ -153,7 +147,7 @@ async def process_traces_queue():
         await write_traces_batch(traces)
 
 
-def get_all(tenant_id, data: schemas_ee.TrailSearchPayloadSchema):
+def get_all(tenant_id, data: schemas.TrailSearchPayloadSchema):
     with pg_client.PostgresClient() as cur:
         conditions = ["traces.tenant_id=%(tenant_id)s",
                       "traces.created_at>=%(startDate)s",
@@ -163,7 +157,7 @@ def get_all(tenant_id, data: schemas_ee.TrailSearchPayloadSchema):
                   "endDate": data.endDate,
                   "p_start": (data.page - 1) * data.limit,
                   "p_end": data.page * data.limit,
-                  **data.dict()}
+                  **data.model_dump()}
         if data.user_id is not None:
             conditions.append("user_id=%(user_id)s")
         if data.action is not None:
@@ -172,7 +166,7 @@ def get_all(tenant_id, data: schemas_ee.TrailSearchPayloadSchema):
             conditions.append("users.name ILIKE %(query)s")
             conditions.append("users.tenant_id = %(tenant_id)s")
             params["query"] = helper.values_for_operator(value=data.query,
-                                                         op=schemas.SearchEventOperator._contains)
+                                                         op=schemas.SearchEventOperator.CONTAINS)
         cur.execute(
             cur.mogrify(
                 f"""SELECT COUNT(*) AS count,
@@ -201,6 +195,6 @@ def get_available_actions(tenant_id):
 
 
 cron_jobs = [
-    {"func": process_traces_queue, "trigger": "interval", "seconds": config("TRACE_PERIOD", cast=int, default=60),
-     "misfire_grace_time": 20}
+    {"func": process_traces_queue, "trigger": IntervalTrigger(seconds=config("TRACE_PERIOD", cast=int, default=60)),
+     "misfire_grace_time": 20, "max_instances": 1}
 ]

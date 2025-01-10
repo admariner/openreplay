@@ -1,10 +1,10 @@
 import React from 'react';
 import { useStore } from 'App/mstore';
-import WidgetWrapper from '../WidgetWrapper';
-import { NoContent, Loader, Icon } from 'UI';
+import WidgetWrapperNew from 'Components/Dashboard/components/WidgetWrapper/WidgetWrapperNew';
+import { Empty } from 'antd';
+import { NoContent, Loader } from 'UI';
 import { useObserver } from 'mobx-react-lite';
-import AddMetricContainer from './AddMetricContainer';
-import Widget from 'App/mstore/types/widget';
+import AnimatedSVG, { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
 
 interface Props {
   siteId: string;
@@ -12,97 +12,58 @@ interface Props {
   onEditHandler: () => void;
   id?: string;
 }
+
 function DashboardWidgetGrid(props: Props) {
   const { dashboardId, siteId } = props;
   const { dashboardStore } = useStore();
   const loading = useObserver(() => dashboardStore.isLoading);
   const dashboard = dashboardStore.selectedDashboard;
   const list = useObserver(() => dashboard?.widgets);
-  const smallWidgets: Widget[] = [];
-  const regularWidgets: Widget[] = [];
-
-  list.forEach((item) => {
-    if (item.config.col === 1) {
-      smallWidgets.push(item);
-    } else {
-      regularWidgets.push(item);
-    }
-  });
-
-  const smallWidgetsLen = smallWidgets.length;
 
   return useObserver(() => (
-    // @ts-ignore
     <Loader loading={loading}>
-      <NoContent
-        show={list.length === 0}
-        icon="no-metrics-chart"
-        title={
-          <span className="text-2xl capitalize-first text-figmaColors-text-primary">
-            Build your dashboard
-          </span>
-        }
-        subtext={
-          <div className="w-4/5 m-auto mt-4">
-            <AddMetricContainer siteId={siteId} />
+      {
+        list?.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-sm p-5">
+            <NoContent
+              show={true}
+              icon="no-metrics-chart"
+              title={
+                <div className="text-center">
+                   <div className='mb-4'>
+                   <AnimatedSVG name={ICONS.NO_RESULTS} size={60} />
+                   </div>
+                  <div className="text-xl font-medium mb-2">
+                    There are no cards in this dashboard
+                  </div>
+                  <div className="text-base font-normal">
+                  Create a card by clicking the "Add Card" button to visualize insights here.
+                  </div>
+                </div>
+              }
+            />
           </div>
-        }
-      >
-        <div className="grid gap-4 grid-cols-4 items-start pb-10" id={props.id}>
-          {smallWidgets.length > 0 ? (
-            <>
-              <div className="font-semibold text-xl py-4 flex items-center gap-2 col-span-4">
-                <Icon name="grid-horizontal" size={26} />
-                Web Vitals
-              </div>
-              {smallWidgets &&
-                smallWidgets.map((item: any, index: any) => (
-                  <React.Fragment key={item.widgetId}>
-                    <WidgetWrapper
-                      index={index}
-                      widget={item}
-                      moveListItem={(dragIndex: any, hoverIndex: any) =>
-                        dashboard.swapWidgetPosition(dragIndex, hoverIndex)
-                      }
-                      dashboardId={dashboardId}
-                      siteId={siteId}
-                      isWidget={true}
-                      grid="vitals"
-                    />
-                  </React.Fragment>
-                ))}
-            </>
-          ) : null}
-
-          {smallWidgets.length > 0 && regularWidgets.length > 0 ? (
-            <div className="font-semibold text-xl py-4 flex items-center gap-2 col-span-4">
-              <Icon name="grid-horizontal" size={26} />
-              All Metrics
-            </div>
-          ) : null}
-
-          {regularWidgets &&
-            regularWidgets.map((item: any, index: any) => (
+        ) : (
+          <div className="grid gap-4 grid-cols-4 items-start pb-10" id={props.id}>
+            {list?.map((item: any, index: any) => (
               <React.Fragment key={item.widgetId}>
-                <WidgetWrapper
-                  index={smallWidgetsLen + index}
+                <WidgetWrapperNew
+                  index={index}
                   widget={item}
                   moveListItem={(dragIndex: any, hoverIndex: any) =>
-                    dashboard.swapWidgetPosition(dragIndex, hoverIndex)
+                    dashboard?.swapWidgetPosition(dragIndex, hoverIndex)
                   }
                   dashboardId={dashboardId}
                   siteId={siteId}
-                  isWidget={true}
                   grid="other"
+                  showMenu={true}
+                  isSaved={true}
                 />
               </React.Fragment>
             ))}
-
-          <div className="col-span-2" id="no-print">
-            <AddMetricContainer siteId={siteId} />
           </div>
-        </div>
-      </NoContent>
+        )
+      }
     </Loader>
   ));
 }

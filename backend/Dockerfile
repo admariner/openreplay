@@ -1,29 +1,38 @@
-FROM golang:1.18-alpine3.15 AS prepare
+#ARCH can be amd64 or arm64
+ARG ARCH=amd64
 
-RUN apk add --no-cache git openssh openssl-dev pkgconf gcc g++ make libc-dev bash librdkafka-dev cyrus-sasl cyrus-sasl-gssapiv2 krb5
-
+FROM --platform=linux/$ARCH golang:1.23-alpine AS build
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community git openssh openssl-dev pkgconf gcc g++ make libc-dev bash librdkafka-dev cyrus-sasl cyrus-sasl-gssapiv2 krb5;
 WORKDIR /root
 
+# Load code dependencies
 COPY go.mod .
 COPY go.sum .
 RUN go mod download
 
-
-FROM prepare AS build
+# Copy code itself
 COPY cmd cmd
 COPY pkg pkg
 COPY internal internal
 
+# Build service
 ARG SERVICE_NAME
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o service -tags dynamic openreplay/backend/cmd/$SERVICE_NAME
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=$ARCH go build -o service -tags dynamic openreplay/backend/cmd/$SERVICE_NAME
 
+FROM --platform=linux/$ARCH alpine AS entrypoint
+ARG GIT_SHA
+ARG GSSAPI=false
+LABEL GIT_SHA=$GIT_SHA
+LABEL GSSAPI=$GSSAPI
 
-FROM alpine AS entrypoint
-RUN apk add --no-cache ca-certificates librdkafka-dev cyrus-sasl cyrus-sasl-gssapiv2 krb5
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community ca-certificates librdkafka-dev cyrus-sasl cyrus-sasl-gssapiv2 krb5
 RUN adduser -u 1001 openreplay -D
 
+ARG SERVICE_NAME
 ENV TZ=UTC \
-    FS_ULIMIT=1000 \
+    GIT_SHA=$GIT_SHA \
+    GSSAPI=$GSSAPI \
+    FS_ULIMIT=10000 \
     FS_DIR=/mnt/efs \
     MAXMINDDB_FILE=/home/openreplay/geoip.mmdb \
     UAPARSER_FILE=/home/openreplay/regexes.yaml \
@@ -45,21 +54,28 @@ ENV TZ=UTC \
     REDIS_STREAMS_MAX_LEN=10000 \
     TOPIC_RAW_WEB=raw \
     TOPIC_RAW_IOS=raw-ios \
+    TOPIC_RAW_IMAGES=raw-images \
     TOPIC_CACHE=cache \
     TOPIC_ANALYTICS=analytics \
     TOPIC_TRIGGER=trigger \
+    TOPIC_MOBILE_TRIGGER=mobile-trigger \
+    TOPIC_CANVAS_IMAGES=canvas-images \
+    TOPIC_CANVAS_TRIGGER=canvas-trigger \
     GROUP_SINK=sink \
     GROUP_STORAGE=storage \
     GROUP_DB=db \
     GROUP_ENDER=ender \
     GROUP_CACHE=cache \
     GROUP_HEURISTICS=heuristics \
+    GROUP_IMAGE_STORAGE=image-storage \
+    GROUP_CANVAS_IMAGE=canvas-image \
+    GROUP_CANVAS_VIDEO=canvas-video \
     AWS_REGION_WEB=eu-central-1 \
     AWS_REGION_IOS=eu-west-1 \
     AWS_REGION_ASSETS=eu-central-1 \
     AWS_SKIP_SSL_VALIDATION=false \
     CACHE_ASSETS=true \
-    ASSETS_SIZE_LIMIT=6291456 \
+    ASSETS_SIZE_LIMIT=60291456 \
     ASSETS_HEADERS="{ \"Cookie\": \"ABv=3;\" }" \
     FS_CLEAN_HRS=72 \
     FILE_SPLIT_SIZE=1000000 \
@@ -71,14 +87,40 @@ ENV TZ=UTC \
     BEACON_SIZE_LIMIT=1000000 \
     USE_FAILOVER=false \
     GROUP_STORAGE_FAILOVER=failover \
-    TOPIC_STORAGE_FAILOVER=storage-failover
+    TOPIC_STORAGE_FAILOVER=storage-failover \
+    SERVICE_NAME=$SERVICE_NAME \
+    PROFILER_ENABLED=false \
+    COMPRESSION_TYPE=zstd \
+    CH_USERNAME="default" \
+    CH_PASSWORD="" \
+    CH_DATABASE="default" \
+    # Max file size to process, default to 100MB
+    MAX_FILE_SIZE=100000000 \
+    USE_ENCRYPTION=false \
+    # Use to enable cloud specific feature
+    CLOUD="aws" \
+    # Use to set compression threshold for tracker requests (20kb by default)
+    COMPRESSION_THRESHOLD="20000" \
+    # Set Access-Control-* headers for tracker requests if true
+    USE_CORS=false \
+    RECORD_CANVAS=true \
+    JWT_SECRET="SECRET" \
+    JWT_SPOT_SECRET="SECRET" \
+    BUCKET_NAME="spots" \
+    IS_FEATURE_FLAG_ENABLED=false \
+    IS_USABILITY_TEST_ENABLED=false
 
 
-
-ARG SERVICE_NAME
 RUN if [ "$SERVICE_NAME" = "http" ]; then \
-  wget https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yaml -O "$UAPARSER_FILE" &&\
-  wget https://static.openreplay.com/geoip/GeoLite2-Country.mmdb -O "$MAXMINDDB_FILE"; fi
+      wget https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yaml -O "$UAPARSER_FILE" &&\
+      wget https://static.openreplay.com/geoip/GeoLite2-City.mmdb -O "$MAXMINDDB_FILE"; \
+    elif [ "$SERVICE_NAME" = "imagestorage" ]; then \
+      apk add --no-cache zstd; \
+    elif [ "$SERVICE_NAME" = "canvas-handler" ]; then \
+          apk add --no-cache zstd; \
+    elif [ "$SERVICE_NAME" = "spot" ]; then \
+          apk add --no-cache ffmpeg; \
+    fi
 
 
 COPY --from=build /root/service /home/openreplay/service

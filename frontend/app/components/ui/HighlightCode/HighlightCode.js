@@ -1,16 +1,14 @@
 import React from 'react'
-import Highlight from 'react-highlight'
 import stl from './highlightCode.module.css'
-import cn from 'classnames'
-import { CopyButton } from 'UI'
+import { CopyButton, CodeBlock } from 'UI'
 
 function HighlightCode({ className = 'js', text = ''}) {
   return (
     <div className={stl.snippetWrapper}>
-      <CopyButton content={text} className={cn(stl.codeCopy, 'mt-2 mr-2')} />
-      <Highlight className={className}>
-        {text}
-      </Highlight>
+      <div className="absolute mt-1 mr-2 right-0">
+        <CopyButton content={text} />
+      </div>
+      <CodeBlock code={text} language={className} />
     </div>
   )
 }

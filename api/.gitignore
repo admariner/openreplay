@@ -83,7 +83,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-Pipfile
+Pipfile.lock
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -143,7 +143,7 @@ celerybeat-schedule
 
 # Environments
 .env
-.venv
+.venv/*
 env/
 venv/
 ENV/
@@ -176,4 +176,4 @@ SUBNETS.json
 ./chalicelib/.configs
 README/*
 .local
-build_crons.sh
+/.dev/

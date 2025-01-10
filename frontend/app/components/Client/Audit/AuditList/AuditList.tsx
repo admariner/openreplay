@@ -37,8 +37,8 @@ function AuditList(props: Props) {
             <NoContent
                 title={
                     <div className="flex flex-col items-center justify-center">
-                    <AnimatedSVG name={ICONS.NO_AUDIT_TRAIL} size={80} />
-                    <div className="text-center text-gray-600 my-4">No data available</div>
+                    <AnimatedSVG name={ICONS.NO_AUDIT_TRAIL} size={60} />
+                    <div className="text-center my-4">No data available</div>
                     </div>
                 }
                 size="small"
@@ -46,7 +46,7 @@ function AuditList(props: Props) {
             >
                 <div className="grid grid-cols-12 py-3 px-5 font-medium">
                     <div className="col-span-5">Name</div>
-                    <div className="col-span-4">Status</div>
+                    <div className="col-span-4">Action</div>
                     <div className="col-span-3">Time</div>
                 </div>
 
@@ -54,14 +54,14 @@ function AuditList(props: Props) {
                     <AuditListItem
                         key={index}
                         audit={item}
-                        onShowDetails={() => showModal(<AuditDetailModal audit={item} />, { right: true })}
+                        onShowDetails={() => showModal(<AuditDetailModal audit={item} />, { right: true, width: 500 })}
                     />
                 ))}
                 
                 <div className="w-full flex items-center justify-center py-10">
                     <Pagination
                         page={auditStore.page}
-                        totalPages={Math.ceil(auditStore.total / auditStore.pageSize)}
+                        total={auditStore.total}
                         onPageChange={(page) => auditStore.updateKey('page', page)}
                         limit={auditStore.pageSize}
                         debounceRequest={200}

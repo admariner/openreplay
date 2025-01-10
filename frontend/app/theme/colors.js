@@ -3,6 +3,7 @@ module.exports = {
 
   "gray-light-shade": "#EEEEEE",
   "gray-lightest": "#f6f6f6",
+  "gray-lighter": "#f1f1f1",
   "gray-light": "#ddd",
   "gray-bg": "#CCC",
   "gray-medium": "#888",
@@ -32,6 +33,7 @@ module.exports = {
   blue: "#366CD9",
   blue2: "#0076FF",
   "active-blue": "#F6F7FF",
+  'active-dark-blue': "#E2E4F6",
   "bg-blue": "#e3e6ff",
   "active-blue-border": "#D0D4F2",
   pink: "#ffb9b9",
@@ -45,6 +47,7 @@ module.exports = {
     'transparent': 'transparent',
   },
   transparent: 'transparent',
+  cyan: '#EBF4F5',
 
   // actual theme colors - use this for new components
   figmaColors: {
@@ -57,5 +60,6 @@ module.exports = {
     'text-disabled': 'rgba(0,0,0, 0.38)',
     'text-primary': 'rgba(0,0,0, 0.87)',
     'outlined-border': 'rgba(0,0,0, 0.23)',
+    'divider': 'rgba(0, 0, 0, 0.12)',
   }
 }

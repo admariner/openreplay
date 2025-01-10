@@ -1,8 +1,8 @@
 import React from 'react';
-import { List, AutoSizer } from 'react-virtualized';
+import { VList, VListHandle } from 'virtua';
 import cn from 'classnames';
 import { Duration } from 'luxon';
-import { NoContent, Icon, Button } from 'UI';
+import { NoContent, Button } from 'UI';
 import { percentOf } from 'App/utils';
 
 import BarRow from './BarRow';
@@ -21,7 +21,7 @@ type Durationed = {
 
 type CanBeRed = {
   //+isRed: boolean,
-  isRed: () => boolean;
+  isRed: boolean;
 };
 
 interface Row extends Timed, Durationed, CanBeRed {
@@ -71,7 +71,7 @@ type Props = {
   additionalHeight?: number;
   hoverable?: boolean;
   onRowClick?: (row: any, index: number) => void;
-  onJump?: (time: any) => void;
+  onJump?: (obj: { time: number }) => void;
 };
 
 type TimeLineInfo = {
@@ -83,7 +83,7 @@ type State = TimeLineInfo & typeof initialState;
 
 //const TABLE_HEIGHT = 195;
 let _additionalHeight = 0;
-const ROW_HEIGHT = 32;
+const ROW_HEIGHT = 24;
 //const VISIBLE_COUNT = Math.ceil(TABLE_HEIGHT/ROW_HEIGHT);
 
 const TIME_SECTIONS_COUNT = 8;
@@ -140,14 +140,8 @@ export default class TimeTable extends React.PureComponent<Props, State> {
     return Math.ceil(this.tableHeight / ROW_HEIGHT);
   }
 
-  scroller = React.createRef<List>();
+  scroller = React.createRef<VListHandle>();
   autoScroll = true;
-
-  // componentDidMount() {
-  //   if (this.scroller.current) {
-  //     this.scroller.current.scrollToRow(this.props.activeIndex);
-  //   }
-  // }
 
   adjustScroll(prevActiveIndex: number) {
     if (
@@ -156,7 +150,7 @@ export default class TimeTable extends React.PureComponent<Props, State> {
       prevActiveIndex !== this.props.activeIndex &&
       this.scroller.current
     ) {
-      this.scroller.current.scrollToRow(this.props.activeIndex);
+      this.scroller.current.scrollToIndex(this.props.activeIndex);
     }
   }
 
@@ -197,24 +191,22 @@ export default class TimeTable extends React.PureComponent<Props, State> {
     }
   };
 
-  renderRow = ({ index, key, style: rowStyle }: any) => {
+  renderRow = (index: number) => {
     const { activeIndex } = this.props;
     const { children: columns, rows, renderPopup, hoverable, onRowClick } = this.props;
     const { timestart, timewidth } = this.state;
     const row = rows[index];
     return (
       <div
-        style={rowStyle}
-        key={key}
         className={cn(
-          'dev-row border-b border-color-gray-light-shade group items-center',
+          'dev-row border-b border-neutral-950/5 group items-center text-sm',
           stl.row,
           {
             [stl.hoverable]: hoverable,
-            'error color-red': !!row.isRed && row.isRed(),
+            'error color-red': row.isRed,
             'cursor-pointer': typeof onRowClick === 'function',
             [stl.activeRow]: activeIndex === index,
-            // [stl.inactiveRow]: !activeIndex || index > activeIndex,
+            [stl.inactiveRow]: !activeIndex || index > activeIndex,
           }
         )}
         onClick={typeof onRowClick === 'function' ? () => onRowClick(row, index) : undefined}
@@ -222,14 +214,14 @@ export default class TimeTable extends React.PureComponent<Props, State> {
       >
         {columns
           .filter((i: any) => !i.hidden)
-          .map(({ dataKey, render, width }) => (
-            <div className={stl.cell} style={{ width: `${width}px` }}>
+          .map(({ dataKey, render, width, label }) => (
+            <div key={parseInt(label.replace(' ', '')+dataKey, 36)} className={cn(stl.cell, 'overflow-ellipsis overflow-hidden !py-0.5')} style={{ width: `${width}px` }}>
               {render
                 ? render(row)
                 : row[dataKey || ''] || <i className="color-gray-light">{'empty'}</i>}
             </div>
           ))}
-        <div className={cn('relative flex-1 flex', stl.timeBarWrapper)}>
+        <div className={cn('relative flex-1 flex', stl.timeBarWrapper)} style={{ height: 15 }}>
           <BarRow resource={row} timestart={timestart} timewidth={timewidth} popup={renderPopup} />
         </div>
         <JumpButton onClick={() => this.onJump(index)} />
@@ -240,34 +232,32 @@ export default class TimeTable extends React.PureComponent<Props, State> {
   onPrevClick = () => {
     let prevRedIndex = -1;
     for (let i = this.state.firstVisibleRowIndex - 1; i >= 0; i--) {
-      if (this.props.rows[i].isRed()) {
+      if (this.props.rows[i].isRed) {
         prevRedIndex = i;
         break;
       }
     }
     if (this.scroller.current != null) {
-      this.scroller.current.scrollToRow(prevRedIndex);
+      this.scroller.current.scrollToIndex(prevRedIndex);
     }
   };
 
   onNextClick = () => {
     let prevRedIndex = -1;
     for (let i = this.state.firstVisibleRowIndex + 1; i < this.props.rows.length; i++) {
-      if (this.props.rows[i].isRed()) {
+      if (this.props.rows[i].isRed) {
         prevRedIndex = i;
         break;
       }
     }
     if (this.scroller.current != null) {
-      this.scroller.current.scrollToRow(prevRedIndex);
+      this.scroller.current.scrollToIndex(prevRedIndex);
     }
   };
 
   onColumnClick = (dataKey: string, onClick: any) => {
     if (typeof onClick === 'function') {
-      // this.scroller.current.scrollToRow(0);
       onClick(dataKey);
-      this.scroller.current.forceUpdateGrid();
     }
   };
 
@@ -327,6 +317,7 @@ export default class TimeTable extends React.PureComponent<Props, State> {
           <div className={stl.infoHeaders}>
             {columns.map(({ label, width, dataKey, onClick = null }) => (
               <div
+                key={parseInt(label.replace(' ', ''), 36)}
                 className={cn(stl.headerCell, 'flex items-center select-none', {
                   'cursor-pointer': typeof onClick === 'function',
                 })}
@@ -347,13 +338,14 @@ export default class TimeTable extends React.PureComponent<Props, State> {
         </div>
 
         <NoContent size="small" show={rows.length === 0}>
-          <div className="relative">
+          <div className="relative" style={{ height: this.tableHeight }}>
             <div className={stl.timePart} style={{ left: `${columnsSumWidth}px` }}>
               {timeColumns.map((_, index) => (
                 <div key={`tc-${index}`} className={stl.timeCell} />
               ))}
               {visibleRefLines.map(({ time, color, onClick }) => (
                 <div
+                  key={time}
                   className={cn(stl.refLine, `bg-${color}`)}
                   style={{
                     left: `${percentOf(time - timestart, timewidth)}%`,
@@ -363,24 +355,9 @@ export default class TimeTable extends React.PureComponent<Props, State> {
                 />
               ))}
             </div>
-            <AutoSizer disableHeight>
-              {({ width }: { width: number }) => (
-                <List
-                  scrollToIndex={this.props.activeIndex || 0}
-                  ref={this.scroller}
-                  className={stl.list}
-                  height={this.tableHeight + additionalHeight}
-                  width={width}
-                  overscanRowCount={20}
-                  rowCount={rows.length}
-                  rowHeight={ROW_HEIGHT}
-                  rowRenderer={this.renderRow}
-                  onScroll={this.onScroll}
-                  scrollToAlignment="center"
-                  forceUpdateProp={timestart | timewidth | (activeIndex || 0)}
-                />
-              )}
-            </AutoSizer>
+            <VList className={stl.list} ref={this.scroller} itemSize={ROW_HEIGHT} count={rows.length}>
+              {this.props.rows.map((_, index) => this.renderRow(index))}
+            </VList>
           </div>
         </NoContent>
       </div>

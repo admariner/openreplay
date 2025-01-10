@@ -7,7 +7,7 @@ import IFrameOffsets, { Offset } from './iframe_offsets.js'
 
 import { CreateDocument } from '../messages.gen.js'
 import App from '../index.js'
-import { IN_BROWSER, hasOpenreplayAttribute } from '../../utils.js'
+import { IN_BROWSER, hasOpenreplayAttribute, canAccessIframe } from '../../utils.js'
 
 export interface Options {
   captureIFrames: boolean
@@ -21,20 +21,21 @@ const attachShadowNativeFn = IN_BROWSER ? Element.prototype.attachShadow : () =>
 export default class TopObserver extends Observer {
   private readonly options: Options
   private readonly iframeOffsets: IFrameOffsets = new IFrameOffsets()
+  readonly app: App
 
-  constructor(app: App, options: Partial<Options>) {
-    super(app, true)
+  constructor(params: { app: App; options: Partial<Options> }) {
+    super(params.app, true)
+    this.app = params.app
     this.options = Object.assign(
       {
         captureIFrames: true,
       },
-      options,
+      params.options,
     )
-
     // IFrames
     this.app.nodes.attachNodeCallback((node) => {
       if (
-        hasTag(node, 'IFRAME') &&
+        hasTag(node, 'iframe') &&
         ((this.options.captureIFrames && !hasOpenreplayAttribute(node, 'obscured')) ||
           hasOpenreplayAttribute(node, 'capture'))
       ) {
@@ -53,7 +54,7 @@ export default class TopObserver extends Observer {
   private readonly contextCallbacks: Array<ContextCallback> = []
 
   // Attached once per Tracker instance
-  private readonly contextsSet: Set<Window> = new Set()
+  private readonly contextsSet: WeakSet<Window> = new WeakSet()
   attachContextCallback(cb: ContextCallback) {
     this.contextCallbacks.push(cb)
   }
@@ -62,28 +63,34 @@ export default class TopObserver extends Observer {
     return this.iframeOffsets.getDocumentOffset(doc)
   }
 
-  private iframeObservers: IFrameObserver[] = []
+  private iframeObserversArr: IFrameObserver[] = []
+  private iframeObservers: WeakMap<HTMLIFrameElement | Document, IFrameObserver> = new WeakMap()
+  private docObservers: WeakMap<Document, IFrameObserver> = new WeakMap()
   private handleIframe(iframe: HTMLIFrameElement): void {
-    let doc: Document | null = null
     // setTimeout is required. Otherwise some event listeners (scroll, mousemove) applied in modules
-    //     do not work on the iframe document when it 've been loaded dynamically ((why?))
+    // do not work on the iframe document when it 've been loaded dynamically ((why?))
     const handle = this.app.safe(() =>
       setTimeout(() => {
         const id = this.app.nodes.getID(iframe)
-        if (id === undefined) {
-          //log
-          return
-        }
+        if (id === undefined || !canAccessIframe(iframe)) return
         const currentWin = iframe.contentWindow
         const currentDoc = iframe.contentDocument
-        if (currentDoc && currentDoc !== doc) {
-          const observer = new IFrameObserver(this.app)
-          this.iframeObservers.push(observer)
-          observer.observe(iframe) // TODO: call unregisterNode for the previous doc if present (incapsulate: one iframe - one observer)
-          doc = currentDoc
-
-          this.iframeOffsets.observe(iframe)
+        if (!currentDoc) {
+          this.app.debug.warn('no doc for iframe found', iframe)
+          return
         }
+        if (currentDoc && this.docObservers.has(currentDoc)) {
+          this.app.debug.info('doc already observed for', id)
+          return
+        }
+        const observer = new IFrameObserver(this.app)
+        this.iframeObservers.set(iframe, observer)
+        this.docObservers.set(currentDoc, observer)
+        this.iframeObserversArr.push(observer)
+
+        observer.observe(iframe)
+
+        this.iframeOffsets.observe(iframe)
         if (
           currentWin &&
           // Sometimes currentWin.window is null (not in specification). Such window object is not functional
@@ -92,19 +99,20 @@ export default class TopObserver extends Observer {
           //TODO: more explicit logic
         ) {
           this.contextsSet.add(currentWin)
-          //@ts-ignore https://github.com/microsoft/TypeScript/issues/41684
+          // @ts-ignore https://github.com/microsoft/TypeScript/issues/41684
           this.contextCallbacks.forEach((cb) => cb(currentWin))
         }
-      }, 0),
+        // we need this delay because few iframes stacked one in another with rapid updates will break the player (or browser engine rather?)
+      }, 250),
     )
-    iframe.addEventListener('load', handle) // why app.attachEventListener not working?
+    iframe.addEventListener('load', handle)
     handle()
   }
 
-  private shadowRootObservers: ShadowRootObserver[] = []
+  private shadowRootObservers: WeakMap<ShadowRoot, ShadowRootObserver> = new WeakMap()
   private handleShadowRoot(shRoot: ShadowRoot) {
     const observer = new ShadowRootObserver(this.app)
-    this.shadowRootObservers.push(observer)
+    this.shadowRootObservers.set(shRoot, observer)
     observer.observe(shRoot.host)
   }
 
@@ -118,7 +126,7 @@ export default class TopObserver extends Observer {
       observer.handleShadowRoot(shadow)
       return shadow
     }
-
+    this.app.nodes.clear()
     // Can observe documentElement (<html>) here, because it is not supposed to be changing.
     // However, it is possible in some exotic cases and may cause an ignorance of the newly created <html>
     // In this case context.document have to be observed, but this will cause
@@ -136,13 +144,29 @@ export default class TopObserver extends Observer {
     )
   }
 
+  crossdomainObserve(rootNodeId: number, frameOder: number) {
+    const observer = this
+    Element.prototype.attachShadow = function () {
+      // eslint-disable-next-line
+      const shadow = attachShadowNativeFn.apply(this, arguments)
+      observer.handleShadowRoot(shadow)
+      return shadow
+    }
+    this.app.nodes.clear()
+    this.app.nodes.syntheticMode(frameOder)
+    const iframeObserver = new IFrameObserver(this.app)
+    this.iframeObservers.set(window.document, iframeObserver)
+    iframeObserver.syntheticObserve(rootNodeId, window.document)
+  }
+
   disconnect() {
     this.iframeOffsets.clear()
     Element.prototype.attachShadow = attachShadowNativeFn
-    this.iframeObservers.forEach((o) => o.disconnect())
-    this.iframeObservers = []
-    this.shadowRootObservers.forEach((o) => o.disconnect())
-    this.shadowRootObservers = []
+    this.iframeObserversArr.forEach((observer) => observer.disconnect())
+    this.iframeObserversArr = []
+    this.iframeObservers = new WeakMap()
+    this.shadowRootObservers = new WeakMap()
+    this.docObservers = new WeakMap()
     super.disconnect()
   }
 }

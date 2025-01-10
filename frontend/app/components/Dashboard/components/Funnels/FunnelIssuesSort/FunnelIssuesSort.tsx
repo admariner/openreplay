@@ -1,6 +1,6 @@
 import { useStore } from 'App/mstore';
 import React from 'react';
-import Select from 'Shared/Select';
+import { Select } from 'antd';
   
 const sortOptions = [
     { value: 'afectedUsers-desc', label: 'Affected Users (High)' },
@@ -24,12 +24,19 @@ function FunnelIssuesSort(props: Props) {
 
     return (
         <div>
-            <Select
+            {/* <Select
                 plain
                 defaultValue={sortOptions[0].value}
                 options={sortOptions}
                 alignRight={true}
                 onChange={onSortChange}
+            /> */}
+            <Select
+                className='w-60 border-0 rounded-lg'
+                defaultValue={sortOptions[0].value}
+                options={sortOptions}
+                onChange={onSortChange}
+                size='small'
             />
         </div>
     );

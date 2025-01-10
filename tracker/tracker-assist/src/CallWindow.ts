@@ -17,8 +17,6 @@ export default class CallWindow {
 	private remoteControlContainer: HTMLElement | null = null
 	private remoteControlEndBtn: HTMLElement | null = null
 	private controlsContainer: HTMLElement | null = null
-	private remoteVideoOn = false
-	private localVideoOn = false
 	private onToggleVideo: (args: any) => void
 	private tsInterval: ReturnType<typeof setInterval>
 	private remoteVideo: MediaStreamTrack
@@ -44,7 +42,7 @@ export default class CallWindow {
 
 		const doc = iframe.contentDocument
 		if (!doc) {
-			console.error('OpenReplay: CallWindow iframe document is not reachable.')
+			logError('OpenReplay: CallWindow iframe document is not reachable.')
 			return
 		}
 
@@ -56,7 +54,9 @@ export default class CallWindow {
 			.then((text) => {
 				iframe.onload = () => {
 					const assistSection = doc.getElementById('or-assist')
-					assistSection?.classList.remove('status-connecting')
+					setTimeout(() => {
+						assistSection?.classList.remove('status-connecting')
+					}, 0)
 					//iframe.style.height = doc.body.scrollHeight + 'px';
 					//iframe.style.width = doc.body.scrollWidth + 'px';
 					this.adjustIframeSize()
@@ -112,6 +112,11 @@ export default class CallWindow {
 					// TODO: save coordinates on the new page
 					attachDND(iframe, dragArea, doc.documentElement)
 				}
+				setTimeout(() => {
+					const assistSection = doc.getElementById('or-assist')
+					assistSection?.classList.remove('status-connecting')
+					this.adjustIframeSize()
+				}, 250)
 			})
 
 		//this.toggleVideoUI(false)
@@ -177,7 +182,6 @@ export default class CallWindow {
 		this.load
 			.then(() => {
 				if (this.videoContainer) {
-					this.remoteVideoOn = enable
 					if (enable) {
 						this.videoContainer.classList.add('remote')
 					} else {
@@ -235,7 +239,6 @@ export default class CallWindow {
 		if (!this.videoBtn || !this.videoContainer) {
 			return
 		}
-		this.localVideoOn = enabled
 		if (enabled) {
 			this.videoContainer.classList.add('local')
 			this.videoBtn.classList.remove('off')

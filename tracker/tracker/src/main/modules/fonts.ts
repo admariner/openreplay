@@ -12,6 +12,7 @@ export default function (app: App) {
   const docFonts: Map<Document, FFData[]> = new Map()
 
   const patchWindow = (wnd: typeof globalThis) => {
+    // @ts-ignore
     class FontFaceInterceptor extends wnd.FontFace {
       constructor(...args: ConstructorParameters<typeof FontFace>) {
         //maybe do this on load(). In this case check if the document.fonts.load(...) function calls the font's load()
@@ -45,22 +46,24 @@ export default function (app: App) {
   app.observer.attachContextCallback(patchWindow)
   patchWindow(window)
 
-  app.nodes.attachNodeCallback((node) => {
-    if (!isDocument(node)) {
-      return
-    }
-    const ffDataArr = docFonts.get(node)
-    if (!ffDataArr) {
-      return
-    }
+  app.nodes.attachNodeCallback(
+    app.safe((node) => {
+      if (!isDocument(node)) {
+        return
+      }
+      const ffDataArr = docFonts.get(node)
+      if (!ffDataArr) {
+        return
+      }
 
-    const parentID = node.defaultView === window ? 0 : app.nodes.getID(node)
-    if (parentID === undefined) {
-      return
-    }
+      const parentID = node.defaultView === window ? 0 : app.nodes.getID(node)
+      if (parentID === undefined) {
+        return
+      }
 
-    ffDataArr.forEach((ffData) => {
-      app.send(LoadFontFace(parentID, ...ffData))
-    })
-  })
+      ffDataArr.forEach((ffData) => {
+        app.send(LoadFontFace(parentID, ...ffData))
+      })
+    }),
+  )
 }

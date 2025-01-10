@@ -1,11 +1,11 @@
 import React from 'react';
-import { useTooltipState, TooltipAnchor, FloatingTooltip, FloatingArrow } from './FloatingTooltip';
+import { useTooltipState, TooltipAnchor, FloatingTooltip } from './FloatingTooltip';
 import type { Placement } from '@floating-ui/react-dom-interactions';
 import cn from 'classnames';
 
 interface Props {
-  title?: any;
-  children: any;
+  title?: React.ReactNode;
+  children: React.ReactNode;
   disabled?: boolean;
   open?: boolean;
   placement?: Placement;
@@ -13,6 +13,7 @@ interface Props {
   delay?: number;
   style?: any;
   offset?: number;
+  anchorClassName?: string;
 }
 function Tooltip(props: Props) {
   const {
@@ -21,6 +22,8 @@ function Tooltip(props: Props) {
     open = false,
     placement,
     className = '',
+    anchorClassName = '',
+    containerClassName = '',
     delay = 500,
     style = {},
     offset = 5,
@@ -37,11 +40,11 @@ function Tooltip(props: Props) {
   });
 
   return (
-    <div className="relative">
-      <TooltipAnchor state={state}>{props.children}</TooltipAnchor>
+    <div className={cn("relative", containerClassName)}>
+      <TooltipAnchor className={anchorClassName} state={state}>{props.children}</TooltipAnchor>
       <FloatingTooltip
         state={state}
-        className={cn('bg-gray-darkest color-white rounded py-1 px-2 animate-fade', className)}
+        className={cn('bg-gray-darkest color-white rounded py-1 px-2 animate-fade whitespace-pre-wrap', className)}
       >
         {title}
         {/* <FloatingArrow state={state} className="" /> */}

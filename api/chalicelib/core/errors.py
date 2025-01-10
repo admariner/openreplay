@@ -2,6 +2,7 @@ import json
 
 import schemas
 from chalicelib.core import sourcemaps, sessions
+from chalicelib.utils import errors_helper
 from chalicelib.utils import pg_client, helper
 from chalicelib.utils.TimeUTC import TimeUTC
 from chalicelib.utils.metrics_helper import __get_step_size
@@ -11,8 +12,10 @@ def get(error_id, family=False):
     if family:
         return get_batch([error_id])
     with pg_client.PostgresClient() as cur:
+        # trying: return only 1 error, without event details
         query = cur.mogrify(
-            "SELECT * FROM events.errors AS e INNER JOIN public.errors AS re USING(error_id) WHERE error_id = %(error_id)s;",
+            # "SELECT * FROM events.errors AS e INNER JOIN public.errors AS re USING(error_id) WHERE error_id = %(error_id)s;",
+            "SELECT * FROM public.errors WHERE error_id = %(error_id)s LIMIT 1;",
             {"error_id": error_id})
         cur.execute(query=query)
         result = cur.fetchone()
@@ -149,8 +152,7 @@ def get_details(project_id, error_id, user_id, **data):
                  INNER JOIN (SELECT MAX(timestamp) AS last_occurrence,
                                     MIN(timestamp) AS first_occurrence
                              FROM events.errors
-                             WHERE error_id = %(error_id)s
-                             GROUP BY error_id) AS time_details ON (TRUE)
+                             WHERE error_id = %(error_id)s) AS time_details ON (TRUE)
                  INNER JOIN (SELECT session_id AS last_session_id,
                                     coalesce(custom_tags, '[]')::jsonb AS custom_tags
                              FROM events.errors
@@ -277,7 +279,7 @@ def get_details(project_id, error_id, user_id, **data):
         status = cur.fetchone()
 
     if status is not None:
-        row["stack"] = format_first_stack_frame(status).pop("stack")
+        row["stack"] = errors_helper.format_first_stack_frame(status).pop("stack")
         row["status"] = status.pop("status")
         row["parent_error_id"] = status.pop("parent_error_id")
         row["favorite"] = status.pop("favorite")
@@ -290,118 +292,6 @@ def get_details(project_id, error_id, user_id, **data):
         row["parent_error_id"] = None
         row["favorite"] = False
         row["viewed"] = False
-    return {"data": helper.dict_to_camel_case(row)}
-
-
-def get_details_chart(project_id, error_id, user_id, **data):
-    pg_sub_query = __get_basic_constraints()
-    pg_sub_query.append("error_id = %(error_id)s")
-    pg_sub_query_chart = __get_basic_constraints(time_constraint=False, chart=True)
-    pg_sub_query_chart.append("error_id = %(error_id)s")
-    with pg_client.PostgresClient() as cur:
-        if data.get("startDate") is None:
-            data["startDate"] = TimeUTC.now(-7)
-        else:
-            data["startDate"] = int(data["startDate"])
-        if data.get("endDate") is None:
-            data["endDate"] = TimeUTC.now()
-        else:
-            data["endDate"] = int(data["endDate"])
-        density = int(data.get("density", 7))
-        step_size = __get_step_size(data["startDate"], data["endDate"], density, factor=1)
-        params = {
-            "startDate": data['startDate'],
-            "endDate": data['endDate'],
-            "project_id": project_id,
-            "userId": user_id,
-            "step_size": step_size,
-            "error_id": error_id}
-
-        main_pg_query = f"""\
-        SELECT %(error_id)s AS error_id,
-               browsers_partition,
-               os_partition,
-               device_partition,
-               country_partition,
-               chart
-        FROM (SELECT jsonb_agg(browser_details) AS browsers_partition
-              FROM (SELECT *
-                    FROM (SELECT user_browser      AS name,
-                                 COUNT(session_id) AS count
-                          FROM events.errors INNER JOIN public.sessions USING (session_id)
-                          WHERE {" AND ".join(pg_sub_query)}
-                          GROUP BY user_browser
-                          ORDER BY count DESC) AS count_per_browser_query
-                             INNER JOIN LATERAL (SELECT jsonb_agg(count_per_version_details) AS partition
-                                                 FROM (SELECT user_browser_version AS version,
-                                                              COUNT(session_id)    AS count
-                                                       FROM events.errors INNER JOIN public.sessions USING (session_id)
-                                                       WHERE {" AND ".join(pg_sub_query)}
-                                                         AND user_browser = count_per_browser_query.name
-                                                       GROUP BY user_browser_version
-                                                       ORDER BY count DESC) AS count_per_version_details) AS browesr_version_details
-                                        ON (TRUE)) AS browser_details) AS browser_details
-                 INNER JOIN (SELECT jsonb_agg(os_details) AS os_partition
-                             FROM (SELECT *
-                                   FROM (SELECT user_os           AS name,
-                                                COUNT(session_id) AS count
-                                         FROM events.errors INNER JOIN public.sessions USING (session_id)
-                                         WHERE {" AND ".join(pg_sub_query)}
-                                         GROUP BY user_os
-                                         ORDER BY count DESC) AS count_per_os_details
-                                            INNER JOIN LATERAL (SELECT jsonb_agg(count_per_version_query) AS partition
-                                                                FROM (SELECT COALESCE(user_os_version, 'unknown') AS version,
-                                                                             COUNT(session_id)                    AS count
-                                                                      FROM events.errors INNER JOIN public.sessions USING (session_id)
-                                                                      WHERE {" AND ".join(pg_sub_query)}
-                                                                        AND user_os = count_per_os_details.name
-                                                                      GROUP BY user_os_version
-                                                                      ORDER BY count DESC) AS count_per_version_query
-                                       ) AS os_version_query ON (TRUE)) AS os_details) AS os_details ON (TRUE)
-                 INNER JOIN (SELECT jsonb_agg(device_details) AS device_partition
-                             FROM (SELECT *
-                                   FROM (SELECT user_device_type  AS name,
-                                                COUNT(session_id) AS count
-                                         FROM events.errors INNER JOIN public.sessions USING (session_id)
-                                         WHERE {" AND ".join(pg_sub_query)}
-                                         GROUP BY user_device_type
-                                         ORDER BY count DESC) AS count_per_device_details
-                                            INNER JOIN LATERAL (SELECT jsonb_agg(count_per_device_details) AS partition
-                                                                FROM (SELECT CASE
-                                                                                 WHEN user_device = '' OR user_device ISNULL
-                                                                                     THEN 'unknown'
-                                                                                 ELSE user_device END AS version,
-                                                                             COUNT(session_id)        AS count
-                                                                      FROM events.errors INNER JOIN public.sessions USING (session_id)
-                                                                      WHERE {" AND ".join(pg_sub_query)}
-                                                                        AND user_device_type = count_per_device_details.name
-                                                                      GROUP BY user_device_type, user_device
-                                                                      ORDER BY count DESC) AS count_per_device_details
-                                       ) AS device_version_details ON (TRUE)) AS device_details) AS device_details ON (TRUE)
-                 INNER JOIN (SELECT jsonb_agg(count_per_country_details) AS country_partition
-                             FROM (SELECT user_country      AS name,
-                                          COUNT(session_id) AS count
-                                   FROM events.errors INNER JOIN public.sessions USING (session_id)
-                                   WHERE {" AND ".join(pg_sub_query)}
-                                   GROUP BY user_country
-                                   ORDER BY count DESC) AS count_per_country_details) AS country_details ON (TRUE)
-                 INNER JOIN (SELECT jsonb_agg(chart_details) AS chart
-                             FROM (SELECT generated_timestamp AS timestamp,
-                                          COUNT(session_id)   AS count
-                                   FROM generate_series(%(startDate)s, %(endDate)s, %(step_size)s) AS generated_timestamp
-                                            LEFT JOIN LATERAL (SELECT DISTINCT session_id
-                                                               FROM events.errors
-                                                                        INNER JOIN public.sessions USING (session_id)
-                                                               WHERE {" AND ".join(pg_sub_query_chart)}
-                                       ) AS chart_details ON (TRUE)
-                                   GROUP BY generated_timestamp
-                                   ORDER BY generated_timestamp) AS chart_details) AS chart_details ON (TRUE);"""
-
-        cur.execute(cur.mogrify(main_pg_query, params))
-        row = cur.fetchone()
-    if row is None:
-        return {"errors": ["error not found"]}
-    row["tags"] = __process_tags(row)
     return {"data": helper.dict_to_camel_case(row)}
 
 
@@ -418,18 +308,18 @@ def __get_basic_constraints(platform=None, time_constraint=True, startTime_arg_n
     if chart:
         ch_sub_query += [f"timestamp >=  generated_timestamp",
                          f"timestamp <  generated_timestamp + %({step_size_name})s"]
-    if platform == schemas.PlatformType.mobile:
+    if platform == schemas.PlatformType.MOBILE:
         ch_sub_query.append("user_device_type = 'mobile'")
-    elif platform == schemas.PlatformType.desktop:
+    elif platform == schemas.PlatformType.DESKTOP:
         ch_sub_query.append("user_device_type = 'desktop'")
     return ch_sub_query
 
 
 def __get_sort_key(key):
     return {
-        schemas.ErrorSort.occurrence: "max_datetime",
-        schemas.ErrorSort.users_count: "users",
-        schemas.ErrorSort.sessions_count: "sessions"
+        schemas.ErrorSort.OCCURRENCE: "max_datetime",
+        schemas.ErrorSort.USERS_COUNT: "users",
+        schemas.ErrorSort.SESSIONS_COUNT: "sessions"
     }.get(key, 'max_datetime')
 
 
@@ -441,7 +331,7 @@ def search(data: schemas.SearchErrorsSchema, project_id, user_id):
 
     platform = None
     for f in data.filters:
-        if f.type == schemas.FilterType.platform and len(f.value) > 0:
+        if f.type == schemas.FilterType.PLATFORM and len(f.value) > 0:
             platform = f.value[0]
     pg_sub_query = __get_basic_constraints(platform, project_key="sessions.project_id")
     pg_sub_query += ["sessions.start_ts>=%(startDate)s", "sessions.start_ts<%(endDate)s", "source ='js_exception'",
@@ -449,14 +339,15 @@ def search(data: schemas.SearchErrorsSchema, project_id, user_id):
     # To ignore Script error
     pg_sub_query.append("pe.message!='Script error.'")
     pg_sub_query_chart = __get_basic_constraints(platform, time_constraint=False, chart=True, project_key=None)
-    # pg_sub_query_chart.append("source ='js_exception'")
+    if platform:
+        pg_sub_query_chart += ["start_ts>=%(startDate)s", "start_ts<%(endDate)s", "project_id=%(project_id)s"]
     pg_sub_query_chart.append("errors.error_id =details.error_id")
     statuses = []
     error_ids = None
-    if data.startDate is None:
-        data.startDate = TimeUTC.now(-30)
-    if data.endDate is None:
-        data.endDate = TimeUTC.now(1)
+    if data.startTimestamp is None:
+        data.startTimestamp = TimeUTC.now(-30)
+    if data.endTimestamp is None:
+        data.endTimestamp = TimeUTC.now(1)
     if len(data.events) > 0 or len(data.filters) > 0:
         print("-- searching for sessions before errors")
         statuses = sessions.search_sessions(data=data, project_id=project_id, user_id=user_id, errors_only=True,
@@ -465,22 +356,22 @@ def search(data: schemas.SearchErrorsSchema, project_id, user_id):
             return empty_response
         error_ids = [e["errorId"] for e in statuses]
     with pg_client.PostgresClient() as cur:
-        step_size = __get_step_size(data.startDate, data.endDate, data.density, factor=1)
+        step_size = __get_step_size(data.startTimestamp, data.endTimestamp, data.density, factor=1)
         sort = __get_sort_key('datetime')
         if data.sort is not None:
             sort = __get_sort_key(data.sort)
-        order = schemas.SortOrderType.desc
+        order = schemas.SortOrderType.DESC
         if data.order is not None:
             order = data.order
         extra_join = ""
 
         params = {
-            "startDate": data.startDate,
-            "endDate": data.endDate,
+            "startDate": data.startTimestamp,
+            "endDate": data.endTimestamp,
             "project_id": project_id,
             "userId": user_id,
             "step_size": step_size}
-        if data.status != schemas.ErrorStatus.all:
+        if data.status != schemas.ErrorStatus.ALL:
             pg_sub_query.append("status = %(error_status)s")
             params["error_status"] = data.status
         if data.limit is not None and data.page is not None:
@@ -499,7 +390,7 @@ def search(data: schemas.SearchErrorsSchema, project_id, user_id):
         if data.query is not None and len(data.query) > 0:
             pg_sub_query.append("(pe.name ILIKE %(error_query)s OR pe.message ILIKE %(error_query)s)")
             params["error_query"] = helper.values_for_operator(value=data.query,
-                                                               op=schemas.SearchEventOperator._contains)
+                                                               op=schemas.SearchEventOperator.CONTAINS)
 
         main_pg_query = f"""SELECT full_count,
                                    error_id,
@@ -536,7 +427,8 @@ def search(data: schemas.SearchErrorsSchema, project_id, user_id):
                                                                       COUNT(session_id)   AS count
                                                                FROM generate_series(%(startDate)s, %(endDate)s, %(step_size)s) AS generated_timestamp
                                                                         LEFT JOIN LATERAL (SELECT DISTINCT session_id
-                                                                                           FROM events.errors
+                                                                                           FROM events.errors 
+                                                                                                {"INNER JOIN public.sessions USING(session_id)" if platform else ""}
                                                                                            WHERE {" AND ".join(pg_sub_query_chart)}
                                                                             ) AS sessions ON (TRUE)
                                                                GROUP BY timestamp
@@ -708,54 +600,3 @@ def change_state(project_id, user_id, error_id, action):
         for e in errors:
             e["status"] = row["status"]
     return {"data": errors}
-
-
-MAX_RANK = 2
-
-
-def __status_rank(status):
-    return {
-        'unresolved': MAX_RANK - 2,
-        'ignored': MAX_RANK - 1,
-        'resolved': MAX_RANK
-    }.get(status)
-
-
-def format_first_stack_frame(error):
-    error["stack"] = sourcemaps.format_payload(error.pop("payload"), truncate_to_first=True)
-    for s in error["stack"]:
-        for c in s.get("context", []):
-            for sci, sc in enumerate(c):
-                if isinstance(sc, str) and len(sc) > 1000:
-                    c[sci] = sc[:1000]
-        # convert bytes to string:
-        if isinstance(s["filename"], bytes):
-            s["filename"] = s["filename"].decode("utf-8")
-    return error
-
-
-def stats(project_id, user_id, startTimestamp=TimeUTC.now(delta_days=-7), endTimestamp=TimeUTC.now()):
-    with pg_client.PostgresClient() as cur:
-        query = cur.mogrify(
-            """WITH user_viewed AS (SELECT error_id FROM public.user_viewed_errors WHERE user_id = %(user_id)s)
-                SELECT COUNT(timed_errors.*) AS unresolved_and_unviewed
-                FROM (SELECT root_error.error_id
-                      FROM events.errors
-                               INNER JOIN public.errors AS root_error USING (error_id)
-                               LEFT JOIN user_viewed USING (error_id)
-                      WHERE project_id = %(project_id)s
-                        AND timestamp >= %(startTimestamp)s
-                        AND timestamp <= %(endTimestamp)s
-                        AND source = 'js_exception'
-                        AND root_error.status = 'unresolved'
-                        AND user_viewed.error_id ISNULL
-                      LIMIT 1
-                     ) AS timed_errors;""",
-            {"project_id": project_id, "user_id": user_id, "startTimestamp": startTimestamp,
-             "endTimestamp": endTimestamp})
-        cur.execute(query=query)
-        row = cur.fetchone()
-
-    return {
-        "data": helper.dict_to_camel_case(row)
-    }

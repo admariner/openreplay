@@ -3,10 +3,11 @@ import { useObserver } from 'mobx-react-lite';
 import React, { useEffect } from 'react';
 import UserListItem from '../UserListItem';
 import { sliceListPerPage, getRE } from 'App/utils';
-import { Pagination, NoContent, Loader } from 'UI';
+import { Pagination, NoContent, Loader, Divider } from 'UI';
 import { useModal } from 'App/components/Modal';
 import UserForm from '../UserForm';
 import AnimatedSVG, { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
+import { filterList } from 'App/utils';
 
 interface Props {
     isOnboarding?: boolean;
@@ -20,19 +21,17 @@ function UserList(props: Props) {
     const searchQuery = useObserver(() => userStore.searchQuery);
     const { showModal } = useModal();
 
-    const filterList = (list) => {
-        const filterRE = getRE(searchQuery, 'i');
-        let _list = list.filter((w) => {
-            return filterRE.test(w.email) || filterRE.test(w.roleName);
-        });
-        return _list;
-    };
+    const getList = (list: any) => filterList(list, searchQuery, ['email', 'roleName', 'name'])
 
-    const list: any = searchQuery !== '' ? filterList(users) : users;
+    const list: any = searchQuery !== '' ? getList(users) : users;
     const length = list.length;
 
     useEffect(() => {
         userStore.fetchUsers();
+
+        return () => {
+            userStore.updateKey('page', 1)
+        }
     }, []);
 
     const editHandler = (user: any) => {
@@ -46,8 +45,8 @@ function UserList(props: Props) {
             <NoContent
                 title={
                     <div className="flex flex-col items-center justify-center">
-                    <AnimatedSVG name={ICONS.NO_AUDIT_TRAIL} size={80} />
-                    <div className="text-center text-gray-600 my-4">No matching results.</div>
+                    <AnimatedSVG name={ICONS.NO_AUDIT_TRAIL} size={60} />
+                    <div className="text-center my-4">No matching results</div>
                     </div>
                 }
                 size="small"
@@ -61,8 +60,10 @@ function UserList(props: Props) {
                         <div className="col-span-2"></div>
                     </div>
 
+                    <Divider className="m-0" />
+
                     {sliceListPerPage(list, userStore.page - 1, userStore.pageSize).map((user: any) => (
-                        <div key={user.id} className="">
+                        <>
                             <UserListItem
                                 user={user}
                                 editHandler={() => editHandler(user)}
@@ -77,14 +78,15 @@ function UserList(props: Props) {
                                 isEnterprise={isEnterprise}
                                 isOnboarding={isOnboarding}
                             />
-                        </div>
+                            <Divider className="m-0" />
+                        </>
                     ))}
                 </div>
 
                 <div className="w-full flex items-center justify-center py-10">
                     <Pagination
                         page={userStore.page}
-                        totalPages={Math.ceil(length / userStore.pageSize)}
+                        total={length}
                         onPageChange={(page) => userStore.updateKey('page', page)}
                         limit={userStore.pageSize}
                         debounceRequest={100}

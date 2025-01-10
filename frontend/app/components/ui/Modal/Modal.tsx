@@ -4,7 +4,7 @@ import cn from 'classnames';
 interface Props {
     children: React.ReactNode;
     open?: boolean;
-    size ?: 'tiny' | 'small' | 'large' | 'fullscreen';
+    size ?: 'tiny' | 'small' | 'large' | 'fullscreen' | 'xlarge';
     onClose?: () => void;
 }
 function Modal(props: Props) {
@@ -13,20 +13,29 @@ function Modal(props: Props) {
     useEffect(() => {
         if (open) {
             document.body.style.overflow = 'hidden';
-        } else {
+        } 
+        return () => {
             document.body.style.overflow = 'auto';
         }
     }, [open]);
 
     const style: any = {};
-    if (size === 'tiny') {
-        style.width = '300px';
-    } else if (size === 'small') {
-        style.width = '400px';
-    } else if (size === 'large') {
-        style.width = '700px';
-    } else if (size === 'fullscreen') {
-        style.width = '100%';
+    switch (size) {
+        case 'tiny':
+            style.width = '300px';
+            break;
+        case 'small':
+            style.width = '420px';
+            break;
+        case 'large':
+            style.width = '700px';
+            break;
+        case 'xlarge':
+            style.width = '846px';
+            break;
+        case 'fullscreen':
+            style.width = '100%';
+            break;
     }
 
     const handleClose = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -41,7 +50,7 @@ function Modal(props: Props) {
             style={{ zIndex: '9999', backgroundColor: 'rgba(0, 0, 0, 0.2)'}}
             onClick={handleClose}
         >
-            <div className="absolute z-10 bg-white rounded border" style={style}>
+            <div className="absolute z-10 bg-white rounded-lg shadow-sm" style={style}>
                 {children}
             </div>
         </div>

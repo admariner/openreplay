@@ -1,3 +1,6 @@
+## this plugin is deprecated, all network tracking apis are moved into the main tracker codebase
+______
+
 # Fetch plugin for OpenReplay
 
 This plugin allows you to capture `fetch` payloads and inspect them later on while replaying session recordings. This is very useful for understanding and fixing issues.
@@ -23,7 +26,8 @@ const tracker = new OpenReplay({
 });
 const fetch = tracker.use(trackerFetch(options)); // check list of available options below
 
-tracker.start();
+// .start() returns a promise
+tracker.start().then(sessionData => ... ).catch(e => ... )
 
 fetch('https://myapi.com/').then(response => console.log(response.json()));
 ```
@@ -44,7 +48,8 @@ const fetch = tracker.use(trackerFetch(options)); // check list of available opt
 //...
 function MyApp() {
   useEffect(() => { // use componentDidMount in case of React Class Component
-    tracker.start();
+    // .start() returns a promise
+    tracker.start().then(sessionData => ... ).catch(e => ... )
 
     fetch('https://myapi.com/').then(response => console.log(response.json()));
   }, [])

@@ -31,7 +31,7 @@ function AlertTriggersModal(props: Props) {
     }, [])
 
     return useObserver(() => (
-        <div className="bg-white box-shadow h-screen overflow-y-auto" style={{ width: '450px'}}>
+        <div className="bg-white box-shadow h-screen overflow-y-auto">
             <div className="flex items-center justify-between p-5 text-2xl">
                 <div>Alerts</div>
                 { count > 0 && (
@@ -58,7 +58,7 @@ function AlertTriggersModal(props: Props) {
                                 <AnimatedSVG name={ICONS.EMPTY_STATE} size="100" />
                             </div>
                         }
-                        subtext="There are no alerts to show."
+                        subtext="There are no alerts to show"
                         show={ !loading && list.length === 0 }
                         size="small"
                     >

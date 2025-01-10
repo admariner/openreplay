@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"strconv"
 
 	. "openreplay/backend/pkg/messages"
@@ -58,20 +57,17 @@ func parseTags(tagsJSON string) (tags map[string]*string, err error) {
 	return
 }
 
-func WrapJSException(m *JSException) *ErrorEvent {
+func WrapJSException(m *JSException) (*ErrorEvent, error) {
 	meta, err := parseTags(m.Metadata)
-	if err != nil {
-		log.Printf("Error on parsing Exception metadata: %v", err)
-	}
 	return &ErrorEvent{
 		MessageID: m.Meta().Index,
-		Timestamp: uint64(m.Meta().Timestamp),
+		Timestamp: m.Meta().Timestamp,
 		Source:    SOURCE_JS,
 		Name:      m.Name,
 		Message:   m.Message,
 		Payload:   m.Payload,
 		Tags:      meta,
-	}
+	}, err
 }
 
 func WrapIntegrationEvent(m *IntegrationEvent) *ErrorEvent {
@@ -102,7 +98,8 @@ func parseFirstFrame(payload string) (*stackFrame, error) {
 	return frames[0], nil
 }
 
-func (e *ErrorEvent) ID(projectID uint32) string {
+func (e *ErrorEvent) ID(projectID uint32) (string, error) {
+	var idErr error
 	hash := fnv.New128a()
 	hash.Write([]byte(e.Source))
 	hash.Write([]byte(e.Name))
@@ -110,7 +107,7 @@ func (e *ErrorEvent) ID(projectID uint32) string {
 	if e.Source == SOURCE_JS {
 		frame, err := parseFirstFrame(e.Payload)
 		if err != nil {
-			log.Printf("Can't parse stackframe ((( %v ))): %v", e.Payload, err)
+			idErr = fmt.Errorf("can't parse stackframe ((( %v ))): %v", e.Payload, err)
 		}
 		if frame != nil {
 			hash.Write([]byte(frame.FileName))
@@ -118,5 +115,17 @@ func (e *ErrorEvent) ID(projectID uint32) string {
 			hash.Write([]byte(strconv.Itoa(frame.ColNo)))
 		}
 	}
-	return strconv.FormatUint(uint64(projectID), 16) + hex.EncodeToString(hash.Sum(nil))
+	return strconv.FormatUint(uint64(projectID), 16) + hex.EncodeToString(hash.Sum(nil)), idErr
+}
+
+func WrapCustomEvent(m *CustomEvent) *IssueEvent {
+	msg := &IssueEvent{
+		Type:          "custom",
+		Timestamp:     m.Time(),
+		MessageID:     m.MsgID(),
+		ContextString: m.Name,
+		Payload:       m.Payload,
+	}
+	msg.Meta().SetMeta(m.Meta())
+	return msg
 }

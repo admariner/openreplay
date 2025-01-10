@@ -1,32 +1,42 @@
-import React, { useState } from 'react'
+import SummaryBlock from 'Components/Session/Player/ReplayPlayer/SummaryBlock';
+import React from 'react';
+import Session from 'Types/session/session';
 import EventsBlock from '../Session_/EventsBlock';
-import PageInsightsPanel from '../Session_/PageInsightsPanel/PageInsightsPanel'
-import { Controls as PlayerControls } from 'Player';
-import { connectPlayer } from 'Player';
+import PageInsightsPanel from '../Session_/PageInsightsPanel/PageInsightsPanel';
+import TagWatch from 'Components/Session/Player/TagWatch';
+
 import cn from 'classnames';
 import stl from './rightblock.module.css';
 
-const EventsBlockConnected = connectPlayer(state => ({
-  currentTimeEventIndex: state.eventListNow.length > 0 ? state.eventListNow.length - 1 : 0,
-  playing: state.playing,
-}))(EventsBlock)
-
-function RightBlock(props) {
-  const { activeTab } = props;
-
-  const renderActiveTab = (tab) => {
-    switch(tab) {
-      case props.tabs.EVENTS:
-        return <EventsBlockConnected setActiveTab={props.setActiveTab} player={PlayerControls}/>
-      case props.tabs.HEATMAPS:
-        return <PageInsightsPanel setActiveTab={props.setActiveTab} />
-    }
+function RightBlock({
+  activeTab,
+  setActiveTab,
+}: {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+}) {
+  switch (activeTab) {
+    case 'EVENTS':
+      return (
+        <div className={cn('flex flex-col border-l', stl.panel)}>
+          <EventsBlock setActiveTab={setActiveTab} />
+        </div>
+      );
+    case 'CLICKMAP':
+      return (
+        <div className={cn('flex flex-col bg-white border-l', stl.panel)}>
+          <PageInsightsPanel setActiveTab={setActiveTab} />
+        </div>
+      );
+    case 'INSPECTOR':
+      return (
+        <div className={cn('bg-white border-l', stl.panel)}>
+          <TagWatch />
+        </div>
+      );
+    default:
+      return null;
   }
-  return (
-    <div className={cn("flex flex-col bg-white border-l", stl.panel)}>
-          {renderActiveTab(activeTab)}
-    </div>
-  )
 }
 
-export default React.memo(RightBlock)
+export default RightBlock;

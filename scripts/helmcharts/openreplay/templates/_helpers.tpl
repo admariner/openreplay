@@ -5,6 +5,37 @@ Expand the name of the chart.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/* Get domain name with/without port */}}
+{{- define "openreplay.domainURL" -}}
+{{- $scheme := ternary "https" "http" .Values.global.ORSecureAccess -}}
+{{- $internalPort := ternary .Values.global.ingress.controller.service.ports.https .Values.global.ingress.controller.service.ports.http .Values.global.ORSecureAccess -}}
+{{/* If you're running OR behind proxy
+ingress-nginx: &ingress-nginx
+  externalProxyPorts:
+    http: 80
+    https: 443
+*/}}
+{{- $externalPort := $internalPort -}}
+{{- if .Values.global.ingress.externalProxyPorts }}
+{{- $externalPort = ternary .Values.global.ingress.externalProxyPorts.https .Values.global.ingress.externalProxyPorts.http .Values.global.ORSecureAccess -}}
+{{- end }}
+{{- $port := toString $externalPort -}}
+{{- if or (eq $port "80") (eq $port "443") -}}
+{{- printf "%s://%s" $scheme .Values.global.domainName -}}
+{{- else -}}
+{{- printf "%s://%s:%s" $scheme .Values.global.domainName $port -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Get the S3 endpoint value */}}
+{{- define "openreplay.s3Endpoint" -}}
+{{- if contains "minio" .Values.global.s3.endpoint -}}
+{{- include "openreplay.domainURL" . -}}
+{{- else -}}
+{{- .Values.global.s3.endpoint -}}
+{{- end -}}
+{{- end -}}
+
 {{/*
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
@@ -40,6 +71,9 @@ helm.sh/chart: {{ include "openreplay.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Values.global.appLabels }}
+{{- .Values.global.appLabels | toYaml | nindent 0}}
+{{- end}}
 {{- end }}
 
 {{/*
@@ -65,6 +99,7 @@ Create the name of the service account to use
 Create the environment configuration for REDIS_STRING
 */}}
 {{- define "openreplay.env.redis_string" -}}
+{{- if .enabled }}
 {{- $scheme := (eq (.tls | default dict).enabled true) | ternary "rediss" "redis" -}}
 {{- $auth := "" -}}
 {{- if or .existingSecret .redisPassword -}}
@@ -82,6 +117,7 @@ Create the environment configuration for REDIS_STRING
 {{- end}}
 - name: REDIS_STRING
   value: '{{ $scheme }}://{{ $auth }}{{ .redisHost }}:{{ .redisPort }}'
+{{- end }}
 {{- end }}
 
 {{/*

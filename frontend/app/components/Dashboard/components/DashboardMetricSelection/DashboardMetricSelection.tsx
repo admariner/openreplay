@@ -1,10 +1,9 @@
 import React, { useEffect } from 'react';
 import WidgetWrapper from '../WidgetWrapper';
 import { useObserver } from 'mobx-react-lite';
-import { Icon } from 'UI';
+import { Icon, Loader } from 'UI';
 import cn from 'classnames';
 import { useStore } from 'App/mstore';
-import { Loader } from 'UI';
 
 interface IWiProps {
     category: Record<string, any>
@@ -19,7 +18,6 @@ const ICONS: Record<string, string | null> = {
     resources: 'resources-icon',
     overview: null,
     custom: null,
-    'web vitals': 'web-vitals',
 }
 
 export function WidgetCategoryItem({ category, isSelected, onClick, selectedWidgetIds }: IWiProps) {
@@ -137,7 +135,7 @@ function DashboardMetricSelection(props: IProps) {
                                 widget={widget}
                                 active={selectedWidgetIds.includes(widget.metricId)}
                                 isTemplate={true}
-                                isWidget={widget.metricType === 'predefined'}
+                                isSaved={widget.metricType === 'predefined'}
                                 onClick={() => dashboardStore.toggleWidgetSelection(widget)}
                             />
                         ))}

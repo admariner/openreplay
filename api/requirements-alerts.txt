@@ -1,15 +1,18 @@
-requests==2.28.1
-urllib3==1.26.12
-boto3==1.26.14
-pyjwt==2.6.0
-psycopg2-binary==2.9.5
-elasticsearch==8.5.1
-jira==3.4.1
+# Keep this version to not have conflicts between requests and boto3
+urllib3==1.26.16
+requests==2.32.3
+boto3==1.35.60
+pyjwt==2.9.0
+psycopg2-binary==2.9.10
+psycopg[pool,binary]==3.2.3
+elasticsearch==8.16.0
+jira==3.8.0
+cachetools==5.5.0
 
 
 
-fastapi==0.87.0
-uvicorn[standard]==0.20.0
-python-decouple==3.6
-pydantic[email]==1.10.2
-apscheduler==3.9.1.post1
+fastapi==0.115.5
+uvicorn[standard]==0.32.0
+python-decouple==3.8
+pydantic[email]==2.9.2
+apscheduler==3.10.4

@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Icon } from 'UI';
+import {Input} from 'antd';
 import { debounce } from 'App/utils';
-import { changeSearch } from 'Duck/alerts';
-import { connect } from 'react-redux';
+import { useStore } from 'App/mstore'
+import { observer } from 'mobx-react-lite'
 
 let debounceUpdate: any = () => {};
 
-interface Props {
-  changeSearch: (value: string) => void;
-}
-
-function AlertsSearch({ changeSearch }: Props) {
-  const [inputValue, setInputValue] = useState('');
+function AlertsSearch() {
+  const { alertsStore } = useStore();
+  const [inputValue, setInputValue] = useState(alertsStore.alertsSearch);
 
   useEffect(() => {
-    debounceUpdate = debounce((value: string) => changeSearch(value), 500);
+    debounceUpdate = debounce((value: string) => alertsStore.changeSearch(value), 500);
   }, []);
 
   const write = ({ target: { value } }: React.ChangeEvent<HTMLInputElement>) => {
@@ -25,21 +23,16 @@ function AlertsSearch({ changeSearch }: Props) {
   return (
     <div className="relative">
       <Icon name="search" className="absolute top-0 bottom-0 ml-2 m-auto" size="16" />
-      <input
+      <Input.Search
         value={inputValue}
+        allowClear
         name="alertsSearch"
-        className="bg-white p-2 border border-borderColor-gray-light-shade rounded w-full pl-10"
-        placeholder="Filter by title"
+        className="w-full"
+        placeholder="Filter by alert title"
         onChange={write}
       />
     </div>
   );
 }
 
-export default connect(
-  (state) => ({
-    // @ts-ignore
-    alertsSearch: state.getIn(['alerts', 'alertsSearch']),
-  }),
-  { changeSearch }
-)(AlertsSearch);
+export default observer(AlertsSearch);

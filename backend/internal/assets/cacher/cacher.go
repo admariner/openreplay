@@ -1,72 +1,101 @@
 package cacher
 
 import (
-	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
-	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
 	"io"
-	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
-	"openreplay/backend/pkg/monitoring"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
-
 	config "openreplay/backend/internal/config/assets"
-	"openreplay/backend/pkg/storage"
+	metrics "openreplay/backend/pkg/metrics/assets"
+	"openreplay/backend/pkg/objectstorage"
 	"openreplay/backend/pkg/url/assets"
+
+	"github.com/pkg/errors"
 )
 
 const MAX_CACHE_DEPTH = 5
 
 type cacher struct {
-	timeoutMap       *timeoutMap      // Concurrency implemented
-	s3               *storage.S3      // AWS Docs: "These clients are safe to use concurrently."
-	httpClient       *http.Client     // Docs: "Clients are safe for concurrent use by multiple goroutines."
-	rewriter         *assets.Rewriter // Read only
-	Errors           chan error
-	sizeLimit        int
-	downloadedAssets syncfloat64.Counter
-	requestHeaders   map[string]string
-	workers          *WorkerPool
+	timeoutMap     *timeoutMap                 // Concurrency implemented
+	objStorage     objectstorage.ObjectStorage // AWS Docs: "These clients are safe to use concurrently."
+	httpClient     *http.Client                // Docs: "Clients are safe for concurrent use by multiple goroutines."
+	rewriter       *assets.Rewriter            // Read only
+	Errors         chan error
+	sizeLimit      int
+	requestHeaders map[string]string
+	workers        *WorkerPool
 }
 
 func (c *cacher) CanCache() bool {
 	return c.workers.CanAddTask()
 }
 
-func NewCacher(cfg *config.Config, metrics *monitoring.Metrics) *cacher {
-	rewriter := assets.NewRewriter(cfg.AssetsOrigin)
-	if metrics == nil {
-		log.Fatalf("metrics are empty")
+func NewCacher(cfg *config.Config, store objectstorage.ObjectStorage) (*cacher, error) {
+	switch {
+	case cfg == nil:
+		return nil, errors.New("config is nil")
+	case store == nil:
+		return nil, errors.New("object storage is nil")
 	}
-	downloadedAssets, err := metrics.RegisterCounter("assets_downloaded")
+
+	rewriter, err := assets.NewRewriter(cfg.AssetsOrigin)
 	if err != nil {
-		log.Printf("can't create downloaded_assets metric: %s", err)
+		return nil, errors.Wrap(err, "can't create rewriter")
 	}
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	if cfg.ClientCertFilePath != "" && cfg.ClientKeyFilePath != "" && cfg.CaCertFilePath != "" {
+
+		var cert tls.Certificate
+		var err error
+
+		cert, err = tls.LoadX509KeyPair(cfg.ClientCertFilePath, cfg.ClientKeyFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("error creating x509 keypair from the client cert file %s and client key file %s , Error: %s",
+				err, cfg.ClientCertFilePath, cfg.ClientKeyFilePath)
+		}
+
+		caCert, err := os.ReadFile(cfg.CaCertFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("error opening cert file %s, Error: %s", cfg.CaCertFilePath, err)
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		tlsConfig = &tls.Config{
+			InsecureSkipVerify: true,
+			Certificates:       []tls.Certificate{cert},
+			RootCAs:            caCertPool,
+		}
+
+	}
+
 	c := &cacher{
 		timeoutMap: newTimeoutMap(),
-		s3:         storage.NewS3(cfg.AWSRegion, cfg.S3BucketAssets),
+		objStorage: store,
 		httpClient: &http.Client{
 			Timeout: time.Duration(6) * time.Second,
 			Transport: &http.Transport{
 				Proxy:           http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				TLSClientConfig: tlsConfig,
 			},
 		},
-		rewriter:         rewriter,
-		Errors:           make(chan error),
-		sizeLimit:        cfg.AssetsSizeLimit,
-		downloadedAssets: downloadedAssets,
-		requestHeaders:   cfg.AssetsRequestHeaders,
+		rewriter:       rewriter,
+		Errors:         make(chan error),
+		sizeLimit:      cfg.AssetsSizeLimit,
+		requestHeaders: cfg.AssetsRequestHeaders,
 	}
 	c.workers = NewPool(64, c.CacheFile)
-	return c
+	return c, nil
 }
 
 func (c *cacher) CacheFile(task *Task) {
@@ -75,10 +104,9 @@ func (c *cacher) CacheFile(task *Task) {
 
 func (c *cacher) cacheURL(t *Task) {
 	t.retries--
+	start := time.Now()
 	req, _ := http.NewRequest("GET", t.requestURL, nil)
-	if t.retries%2 == 0 {
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; rv:31.0) Gecko/20100101 Firefox/31.0")
-	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0")
 	for k, v := range c.requestHeaders {
 		req.Header.Set(k, v)
 	}
@@ -87,11 +115,12 @@ func (c *cacher) cacheURL(t *Task) {
 		c.Errors <- errors.Wrap(err, t.urlContext)
 		return
 	}
+	metrics.RecordDownloadDuration(float64(time.Now().Sub(start).Milliseconds()), res.StatusCode)
 	defer res.Body.Close()
 	if res.StatusCode >= 400 {
 		printErr := true
-		// Retry 403 error
-		if res.StatusCode == 403 && t.retries > 0 {
+		// Retry 403/503 errors
+		if (res.StatusCode == 403 || res.StatusCode == 503) && t.retries > 0 {
 			c.workers.AddTask(t)
 			printErr = false
 		}
@@ -100,7 +129,7 @@ func (c *cacher) cacheURL(t *Task) {
 		}
 		return
 	}
-	data, err := ioutil.ReadAll(io.LimitReader(res.Body, int64(c.sizeLimit+1)))
+	data, err := io.ReadAll(io.LimitReader(res.Body, int64(c.sizeLimit+1)))
 	if err != nil {
 		c.Errors <- errors.Wrap(err, t.urlContext)
 		return
@@ -114,6 +143,13 @@ func (c *cacher) cacheURL(t *Task) {
 	if contentType == "" {
 		contentType = mime.TypeByExtension(filepath.Ext(res.Request.URL.Path))
 	}
+
+	// Skip html file (usually it's a CDN mock for 404 error)
+	if strings.HasPrefix(contentType, "text/html") {
+		c.Errors <- errors.Wrap(fmt.Errorf("context type is text/html, sessID: %d", t.sessionID), t.urlContext)
+		return
+	}
+
 	isCSS := strings.HasPrefix(contentType, "text/css")
 
 	strData := string(data)
@@ -122,12 +158,15 @@ func (c *cacher) cacheURL(t *Task) {
 	}
 
 	// TODO: implement in streams
-	err = c.s3.Upload(strings.NewReader(strData), t.cachePath, contentType, false)
+	start = time.Now()
+	err = c.objStorage.Upload(strings.NewReader(strData), t.cachePath, contentType, objectstorage.NoCompression)
 	if err != nil {
+		metrics.RecordUploadDuration(float64(time.Now().Sub(start).Milliseconds()), true)
 		c.Errors <- errors.Wrap(err, t.urlContext)
 		return
 	}
-	c.downloadedAssets.Add(context.Background(), 1)
+	metrics.RecordUploadDuration(float64(time.Now().Sub(start).Milliseconds()), false)
+	metrics.IncreaseSavedSessions()
 
 	if isCSS {
 		if t.depth > 0 {
@@ -167,7 +206,7 @@ func (c *cacher) checkTask(newTask *Task) {
 		return
 	}
 	c.timeoutMap.add(cachePath)
-	crTime := c.s3.GetCreationTime(cachePath)
+	crTime := c.objStorage.GetCreationTime(cachePath)
 	if crTime != nil && crTime.After(time.Now().Add(-MAX_STORAGE_TIME)) {
 		return
 	}

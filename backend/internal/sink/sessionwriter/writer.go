@@ -1,15 +1,16 @@
 package sessionwriter
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
-	"openreplay/backend/pkg/messages"
+	"openreplay/backend/pkg/logger"
 )
 
 type SessionWriter struct {
+	log         logger.Logger
 	filesLimit  int
 	workingDir  string
 	fileBuffer  int
@@ -20,8 +21,9 @@ type SessionWriter struct {
 	stopped     chan struct{}
 }
 
-func NewWriter(filesLimit uint16, workingDir string, fileBuffer int, syncTimeout int) *SessionWriter {
+func NewWriter(log logger.Logger, filesLimit uint16, workingDir string, fileBuffer int, syncTimeout int) *SessionWriter {
 	w := &SessionWriter{
+		log:         log,
 		filesLimit:  int(filesLimit) / 2, // should divide by 2 because each session has 2 files
 		workingDir:  workingDir + "/",
 		fileBuffer:  fileBuffer,
@@ -35,11 +37,8 @@ func NewWriter(filesLimit uint16, workingDir string, fileBuffer int, syncTimeout
 	return w
 }
 
-func (w *SessionWriter) Write(msg messages.Message) (err error) {
-	var (
-		sess *Session
-		sid  = msg.SessionID()
-	)
+func (w *SessionWriter) Write(sid uint64, domBuffer, devBuffer []byte) (err error) {
+	var sess *Session
 
 	// Load session
 	sessObj, ok := w.sessions.Load(sid)
@@ -53,7 +52,8 @@ func (w *SessionWriter) Write(msg messages.Message) (err error) {
 		// Check opened sessions limit and close extra session if you need to
 		if extraSessID := w.meta.GetExtra(); extraSessID != 0 {
 			if err := w.Close(extraSessID); err != nil {
-				log.Printf("can't close session: %s", err)
+				ctx := context.WithValue(context.Background(), "sessionID", extraSessID)
+				w.log.Error(ctx, "can't close session: %s", err)
 			}
 		}
 
@@ -65,7 +65,7 @@ func (w *SessionWriter) Write(msg messages.Message) (err error) {
 	}
 
 	// Write data to session
-	return sess.Write(msg)
+	return sess.Write(domBuffer, devBuffer)
 }
 
 func (w *SessionWriter) sync(sid uint64) error {
@@ -100,7 +100,8 @@ func (w *SessionWriter) Info() string {
 func (w *SessionWriter) Sync() {
 	w.sessions.Range(func(sid, lockObj any) bool {
 		if err := w.sync(sid.(uint64)); err != nil {
-			log.Printf("can't sync file descriptor: %s", err)
+			ctx := context.WithValue(context.Background(), "sessionID", sid)
+			w.log.Error(ctx, "can't sync session: %s", err)
 		}
 		return true
 	})
@@ -115,7 +116,8 @@ func (w *SessionWriter) synchronizer() {
 		case <-w.done:
 			w.sessions.Range(func(sid, lockObj any) bool {
 				if err := w.Close(sid.(uint64)); err != nil {
-					log.Printf("can't close file descriptor: %s", err)
+					ctx := context.WithValue(context.Background(), "sessionID", sid)
+					w.log.Error(ctx, "can't close session: %s", err)
 				}
 				return true
 			})

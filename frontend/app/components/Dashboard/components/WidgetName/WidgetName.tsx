@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon, Tooltip } from 'UI';
+import { Input } from 'antd';
 import cn from 'classnames';
 
 interface Props {
@@ -53,23 +54,23 @@ function WidgetName(props: Props) {
   return (
     <div className="flex items-center">
       { editing ? (
-        <input
+        <Input
           ref={ ref }
           name="name"
-          className="rounded fluid border-0 -mx-2 px-2 h-8"
           value={name}
           onChange={write}
           onBlur={() => onBlur()}
           onFocus={() => setEditing(true)}
+          maxLength={80}
         />
       ) : (
         // @ts-ignore
-        <Tooltip title="Double click to rename" disabled={!canEdit}>
-          <div 
-            onDoubleClick={() => setEditing(true)} 
+        <Tooltip delay={200} title="Double click to edit" disabled={!canEdit}>
+          <div
+            onDoubleClick={() => setEditing(true)}
             className={
               cn(
-                "text-2xl h-8 flex items-center border-transparent", 
+                "text-2xl h-8 flex items-center border-transparent",
                 canEdit && 'cursor-pointer select-none border-b border-b-borderColor-transparent hover:border-dotted hover:border-gray-medium'
               )
             }
@@ -77,9 +78,13 @@ function WidgetName(props: Props) {
             { name }
           </div>
         </Tooltip>
-        
+
       )}
-      { canEdit && <div className="ml-3 cursor-pointer" onClick={() => setEditing(true)}><Icon name="pencil" size="14" /></div> }
+      { canEdit && <div className="ml-3 cursor-pointer" onClick={() => setEditing(true)}>
+        <Tooltip title='Rename' placement='bottom'>
+          <Icon name="pencil" size="16" />
+        </Tooltip>
+        </div> }
     </div>
   );
 }

@@ -1,16 +1,12 @@
 import React from 'react';
 import cn from 'classnames';
-import moment from 'moment';
-import { error as errorRoute } from 'App/routes';
+import { DateTime } from 'luxon'
 import { IGNORED, RESOLVED } from 'Types/errorInfo';
-import { Link, Label } from 'UI';
 import ErrorName from '../ErrorName';
 import ErrorLabel from '../ErrorLabel';
 import { BarChart, Bar, YAxis, Tooltip, XAxis } from 'recharts';
 import { Styles } from '../../../Widgets/common';
 import { diffFromNowString } from 'App/date';
-import { useModal } from '../../../../Modal';
-import ErrorDetailsModal from '../ErrorDetailsModal';
 
 interface Props {
     error: any;
@@ -21,10 +17,7 @@ function ErrorListItem(props: Props) {
     const { error, className = '' } = props;
 	// const { showModal } = useModal();
 
-	// const onClick = () => {
-	// 	alert('test')
-	// 	showModal(<ErrorDetailsModal />, { right: true });
-	// }
+
     return (
         <div
 			className={ cn("p-3 grid grid-cols-12 gap-4 cursor-pointer py-4 hover:bg-active-blue", className) }
@@ -53,7 +46,7 @@ function ErrorListItem(props: Props) {
 					<Bar name="Sessions" minPointSize={1} dataKey="count" fill="#A8E0DA" />
 				</BarChart>
 			</div>
-			<ErrorLabel 
+			<ErrorLabel
 				// className={stl.sessions}
 				topValue={ error.sessions }
 				bottomValue="Sessions"
@@ -80,13 +73,14 @@ export default ErrorListItem;
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active) {
       const p = payload[0].payload;
+			const dateStr = p.timestamp ? DateTime.fromMillis(p.timestamp).toFormat('l') : ''
       return (
         <div className="rounded border bg-white p-2">
-          <p className="label text-sm color-gray-medium">{`${p.timestamp ? moment(p.timestamp).format('l') : ''}`}</p>
+          <p className="label text-sm color-gray-medium">{dateStr}</p>
           <p className="text-sm">Sessions: {p.count}</p>
         </div>
       );
     }
-  
+
     return null;
   };

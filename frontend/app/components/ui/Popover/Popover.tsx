@@ -21,16 +21,19 @@ interface Props {
   placement?: Placement;
   children: JSX.Element;
   onOpen?: () => void;
+  onClose?: () => void;
 }
 
-const Popover = ({ children, render, placement, onOpen = () => {} }: Props) => {
+const Popover = ({ children, render, placement = 'bottom-end', onOpen, onClose }: Props) => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
-      onOpen();
+      onOpen?.();
+    } else {
+      onClose?.();
     }
-  }, [open]);
+  }, [open, onOpen, onClose]);
 
   const { x, y, reference, floating, strategy, context } = useFloating({
     open,
@@ -65,7 +68,7 @@ const Popover = ({ children, render, placement, onOpen = () => {} }: Props) => {
         >
           <div
             ref={floating}
-            className="rounded border shadow"
+            className="rounded-lg"
             style={{
               position: strategy,
               top: y ?? 0,

@@ -1,7 +1,7 @@
 import Mouse from './Mouse.js'
 import ConfirmWindow from './ConfirmWindow/ConfirmWindow.js'
 import { controlConfirmDefault, } from './ConfirmWindow/defaults.js'
-import type { Options as AssistOptions, } from './Assist'
+import type { Options as AssistOptions, } from './Assist.js'
 
 export enum RCStatus {
   Disabled,
@@ -11,21 +11,22 @@ export enum RCStatus {
 
 
 let setInputValue = function(this: HTMLInputElement | HTMLTextAreaElement,  value: string) { this.value = value }
-const nativeInputValueDescriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')
+const nativeInputValueDescriptor = typeof window !== 'undefined' && Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')
 if (nativeInputValueDescriptor && nativeInputValueDescriptor.set) {
   setInputValue = nativeInputValueDescriptor.set
 }
 
 
 export default class RemoteControl {
-  private mouse: Mouse | null
-  status: RCStatus = RCStatus.Disabled
+  private mouse: Mouse | null = null
+  public status: RCStatus = RCStatus.Disabled
   private agentID: string | null = null
 
   constructor(
     private readonly options: AssistOptions,
     private readonly onGrand: (id: string) => string | undefined,
-    private readonly onRelease: (id?: string | null) => void) {}
+    private readonly onRelease: (id?: string | null, isDenied?: boolean) => void,
+    private readonly onBusy: (id?: string) => void) {}
 
   reconnect(ids: string[]) {
     const storedID = sessionStorage.getItem(this.options.session_control_peer_key)
@@ -38,11 +39,15 @@ export default class RemoteControl {
 
   private confirm: ConfirmWindow | null = null
   requestControl = (id: string) => {
+    if (this.status === RCStatus.Enabled) {
+      return this.onBusy(id)
+    }
+
     if (this.agentID !== null) {
       this.releaseControl()
       return
     }
-    setTimeout(() =>{
+    setTimeout(() => {
       if (this.status === RCStatus.Requesting) {
         this.releaseControl()
       }
@@ -55,7 +60,7 @@ export default class RemoteControl {
         this.grantControl(id)
       } else {
         this.confirm?.remove()
-        this.releaseControl()
+        this.releaseControl(true)
       }
     })
     .then(() => {
@@ -67,15 +72,17 @@ export default class RemoteControl {
       })
   }
 
-  releaseControl = () => {
+  releaseControl = (isDenied?: boolean, keepId?: boolean) => {
     if (this.confirm) {
       this.confirm.remove()
       this.confirm = null
     }
     this.resetMouse()
     this.status = RCStatus.Disabled
-    sessionStorage.removeItem(this.options.session_control_peer_key)
-    this.onRelease(this.agentID)
+    if (!keepId) {
+      sessionStorage.removeItem(this.options.session_control_peer_key)
+    }
+    this.onRelease(this.agentID, isDenied)
     this.agentID = null
   }
 
@@ -89,6 +96,14 @@ export default class RemoteControl {
     }
     this.mouse = new Mouse(agentName)
     this.mouse.mount()
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.releaseControl(false, true)
+      else {
+        if (this.status === RCStatus.Disabled) {
+          this.reconnect([id,])
+        }
+      }
+    })
   }
 
   resetMouse = () => {
@@ -97,7 +112,9 @@ export default class RemoteControl {
   }
 
   scroll = (id, d) => { id === this.agentID && this.mouse?.scroll(d) }
-  move = (id, xy) => { id === this.agentID && this.mouse?.move(xy) }
+  move = (id, xy) => {
+   return id === this.agentID && this.mouse?.move(xy)
+  }
   private focused: HTMLElement | null = null
   click = (id, xy) => {
     if (id !== this.agentID || !this.mouse) { return }
@@ -109,7 +126,9 @@ export default class RemoteControl {
   input = (id, value: string) => {
     if (id !== this.agentID || !this.mouse || !this.focused) { return }
     if (this.focused instanceof HTMLTextAreaElement
-      || this.focused instanceof HTMLInputElement) {
+      || this.focused instanceof HTMLInputElement
+      || this.focused.tagName === 'INPUT'
+      || this.focused.tagName === 'TEXTAREA') {
       setInputValue.call(this.focused, value)
       const ev = new Event('input', { bubbles: true,})
       this.focused.dispatchEvent(ev)

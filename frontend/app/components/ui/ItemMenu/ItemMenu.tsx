@@ -1,7 +1,9 @@
-import React from 'react';
-import { Icon, Popover } from 'UI';
-import styles from './itemMenu.module.css';
-import cn from 'classnames';
+import React from "react";
+import { Icon, Popover, Tooltip } from "UI";
+import { Dropdown, Menu, Button} from "antd";
+import {EllipsisVertical} from 'lucide-react';
+import styles from "./itemMenu.module.css";
+import cn from "classnames";
 
 interface Item {
   icon?: string;
@@ -9,6 +11,7 @@ interface Item {
   onClick: (args: any) => void;
   hidden?: boolean;
   disabled?: boolean;
+  tooltipTitle?: string;
 }
 
 interface Props {
@@ -16,6 +19,7 @@ interface Props {
   flat?: boolean;
   items: Item[];
   label?: React.ReactNode;
+  sm?: boolean;
   onToggle?: (args: any) => void;
 }
 
@@ -26,13 +30,13 @@ export default class ItemMenu extends React.PureComponent<Props> {
     displayed: false,
   };
 
-  handleEsc = (e: KeyboardEvent) => e.key === 'Escape' && this.closeMenu();
+  handleEsc = (e: KeyboardEvent) => e.key === "Escape" && this.closeMenu();
 
   componentDidMount() {
-    document.addEventListener('keydown', this.handleEsc, false);
+    document.addEventListener("keydown", this.handleEsc, false);
   }
   componentWillUnmount() {
-    document.removeEventListener('keydown', this.handleEsc, false);
+    document.removeEventListener("keydown", this.handleEsc, false);
   }
 
   onClick = (callback: Function) => (e: React.MouseEvent<HTMLDivElement>) => {
@@ -52,73 +56,71 @@ export default class ItemMenu extends React.PureComponent<Props> {
   };
 
   render() {
-    const { items, label = '', bold } = this.props;
+    const { items, label, bold, sm } = this.props;
     const { displayed } = this.state;
-    const parentStyles = label ? 'rounded px-2 py-2 hover:bg-gray-light' : '';
+    const parentStyles = label ? "hover:bg-gray-light" : "";
 
     return (
       <Popover
+        placement="bottom-end" // Set the placement to bottom-end for right alignment
         render={() => (
-          <div
-            className={cn(styles.menu, { [styles.menuDim]: !bold })}
-            // style={{
-            //   top: this.props.flat ? 24 : undefined,
-            // }}
-            // data-displayed={displayed}
-          >
+          <div className={cn(styles.menu, 'rounded-lg', { [styles.menuDim]: !bold })}>
             {items
               .filter(({ hidden }) => !hidden)
-              .map(({ onClick, text, icon, disabled = false }) => (
-                <div
-                  key={text}
-                  onClick={!disabled ? this.onClick(onClick) : () => {}}
-                  className={disabled ? 'cursor-not-allowed' : ''}
-                  role="menuitem"
-                >
-                  <div className={cn(styles.menuItem, 'text-neutral-700', { disabled: disabled })}>
-                    {icon && (
-                      <div className={styles.iconWrapper}>
-                        {/* @ts-ignore */}
-                        <Icon name={icon} size="13" color="gray-dark" />
+              .map(
+                ({
+                  onClick,
+                  text,
+                  icon,
+                  disabled = false,
+                  tooltipTitle = "",
+                }) => (
+                  <Tooltip key={text} disabled={!disabled} title={tooltipTitle} delay={0}>
+                    <div
+                      onClick={!disabled ? this.onClick(onClick) : () => {}}
+                      className={`${disabled ? "cursor-not-allowed" : ""}`}
+                      role="menuitem"
+                    >
+                      <div className={cn(styles.menuItem, { disabled: disabled })}>
+                        {icon && (
+                          <div className={styles.iconWrapper}>
+                            <Icon name={icon} size="13" color="gray-dark" />
+                          </div>
+                        )}
+                        <div>{text}</div>
                       </div>
-                    )}
-                    <div>{text}</div>
-                  </div>
-                </div>
-              ))}
+                    </div>
+                  </Tooltip>
+                )
+              )}
           </div>
         )}
       >
-        <div
-          // onClick={this.toggleMenu}
-          className={cn(
-            'flex items-center cursor-pointer select-none hover rounded-full',
-            !this.props.flat ? parentStyles : '',
-            { 'bg-gray-light': !this.props.flat && displayed && label }
-          )}
-        >
-          {label && (
-            <span
-              className={cn('mr-1', bold ? 'font-medium color-gray-darkest' : 'color-gray-medium')}
-            >
-              {label}
-            </span>
-          )}
-          {this.props.flat ? null : (
-            <div
-              ref={(ref) => {
-                this.menuBtnRef = ref;
-              }}
-              className={cn('rounded-full flex items-center justify-center', {
-                'bg-gray-light': displayed,
-                'w-10 h-10': !label,
+        
+            <Button
+              type="text"
+              className={cn("select-none", !this.props.flat ? parentStyles : "", {
+                "": !this.props.flat && displayed && label,
               })}
-              role="button"
             >
-              <Icon name="ellipsis-v" size="16" />
-            </div>
-          )}
-        </div>
+              {label && (
+                <span className={cn("font-medium")}>
+                  {label}
+                </span>
+              )}
+              {!this.props.flat && (
+                <div
+                  ref={(ref) => {
+                    this.menuBtnRef = ref;
+                  }}
+                  className={cn("rounded-full flex items-center justify-center")}
+                  role="button"
+                >
+                  <EllipsisVertical size={16} />
+                </div>
+              )}
+            </Button>
+        
       </Popover>
     );
   }

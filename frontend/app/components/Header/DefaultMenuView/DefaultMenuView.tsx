@@ -1,13 +1,12 @@
 import React from 'react';
-import { NavLink, withRouter } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   sessions,
   metrics,
   assist,
-  client,
   dashboard,
   withSiteId,
-  CLIENT_DEFAULT_TAB,
+  recordings,
 } from 'App/routes';
 import SiteDropdown from '../SiteDropdown';
 import AnimatedSVG, { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
@@ -17,6 +16,7 @@ const DASHBOARD_PATH = dashboard();
 const METRICS_PATH = metrics();
 const SESSIONS_PATH = sessions();
 const ASSIST_PATH = assist();
+const RECORDINGS_PATH = recordings();
 
 interface Props {
   siteId: any;
@@ -41,15 +41,22 @@ function DefaultMenuView(props: Props) {
         to={withSiteId(SESSIONS_PATH, siteId)}
         className={styles.nav}
         activeClassName={styles.active}
+        data-test-id={"sessions"}
       >
-        {'Sessions'}
+        Sessions
       </NavLink>
       <NavLink
         to={withSiteId(ASSIST_PATH, siteId)}
         className={styles.nav}
         activeClassName={styles.active}
+        isActive={(_, location) => {
+          return (
+            location.pathname.includes(ASSIST_PATH) || location.pathname.includes(RECORDINGS_PATH)
+          );
+        }}
+        data-test-id={"assist"}
       >
-        {'Assist'}
+        Assist
       </NavLink>
       <NavLink
         to={withSiteId(DASHBOARD_PATH, siteId)}
@@ -60,8 +67,9 @@ function DefaultMenuView(props: Props) {
             location.pathname.includes(DASHBOARD_PATH) || location.pathname.includes(METRICS_PATH)
           );
         }}
+        data-test-id={"dashboards"}
       >
-        <span>{'Dashboards'}</span>
+        Dashboards
       </NavLink>
     </div>
   );

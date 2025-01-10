@@ -44,8 +44,8 @@ export default class FetchDetails extends React.PureComponent {
           <NoContent
             title={
 				<div className="flex flex-col items-center justify-center">
-					<AnimatedSVG name={ICONS.NO_RESULTS} size="170" />
-					<div className="mt-6 text-2xl">Body is Empty.</div>
+					<AnimatedSVG name={ICONS.NO_RESULTS} size="60" />
+					<div className="mt-4">Body is Empty</div>
 				</div>
 			}
             size="small"
@@ -68,8 +68,8 @@ export default class FetchDetails extends React.PureComponent {
           <NoContent
             title={
 				<div className="flex flex-col items-center justify-center">
-					<AnimatedSVG name={ICONS.NO_RESULTS} size="170" />
-					<div className="mt-6 text-2xl">Body is Empty.</div>
+					<AnimatedSVG name={ICONS.NO_RESULTS} size="60" />
+					<div className="mt-4">Body is Empty</div>
 				</div>
 			}
             size="small"
@@ -152,7 +152,7 @@ export default class FetchDetails extends React.PureComponent {
               onClick={ this.onTabClick }
               border={ true }
             />
-						<div style={{ height: 'calc(100vh - 314px)', overflowY: 'auto' }}>
+						<div style={{ height: 'calc(100vh - 364px)', overflowY: 'auto' }}>
 							{ this.renderActiveTab(activeTab) }
 						</div>
 					</div>

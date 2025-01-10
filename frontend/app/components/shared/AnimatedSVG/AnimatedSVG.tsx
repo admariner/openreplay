@@ -1,26 +1,10 @@
 import React from 'react';
-import LogoSmall from '../../../svg/logo-small.svg';
-import NoResultsSVG from '../../../svg/no-results.svg';
-import EmptyStateSvg from '../../../svg/empty-state.svg';
-import DashboardSvg from '../../../svg/dashboard-icn.svg';
-import LoaderSVG from '../../../svg/openreplay-preloader.svg';
-import SignalGreenSvg from '../../../svg/signal-green.svg';
-import SignalRedSvg from '../../../svg/signal-red.svg';
-import NoBookmarks from '../../../svg/ca-no-bookmarked-session.svg';
-import NoLiveSessions from '../../../svg/ca-no-live-sessions.svg';
-import NoSessions from '../../../svg/ca-no-sessions.svg';
-import NoSessionsInVault from '../../../svg/ca-no-sessions-in-vault.svg';
-import NoWebhooks from '../../../svg/ca-no-webhooks.svg';
-import NoMetadata from '../../../svg/ca-no-metadata.svg';
-import NoIssues from '../../../svg/ca-no-issues.svg';
-import NoAuditTrail from '../../../svg/ca-no-audit-trail.svg';
-import NoAnnouncements from '../../../svg/ca-no-announcements.svg';
-import NoAlerts from '../../../svg/ca-no-alerts.svg';
 
 export enum ICONS {
     DASHBOARD_ICON = 'dashboard-icn',
     EMPTY_STATE = 'empty-state',
     LOGO_SMALL = 'logo-small',
+    LOGO_FULL = 'logo-full',
     NO_RESULTS = 'no-results',
     LOADER = 'openreplay-preloader',
     SIGNAL_GREEN = 'signal-green',
@@ -35,55 +19,63 @@ export enum ICONS {
     NO_AUDIT_TRAIL = 'ca-no-audit-trail',
     NO_ANNOUNCEMENTS = 'ca-no-announcements',
     NO_ALERTS = 'ca-no-alerts',
+    NO_NOTES = 'ca-no-notes',
+    NO_CARDS = 'ca-no-cards',
+    NO_RECORDINGS = 'ca-no-recordings',
+    NO_SEARCH_RESULTS = 'ca-no-search-results',
+    NO_DASHBOARDS = 'ca-no-dashboards',
+    NO_PROJECTS = 'ca-no-projects',
+    NO_FFLAGS = 'no-fflags',
+    PROCESSING = 'ca-processing',
+    NO_UXT = 'ca-no-uxt',
 }
+
+const ICONS_SVGS = {
+    [ICONS.DASHBOARD_ICON]: require('../../../svg/dashboard-icn.svg').default,
+    [ICONS.EMPTY_STATE]: require('../../../svg/empty-state.svg').default,
+    [ICONS.LOGO_SMALL]: require('../../../svg/logo-small.svg').default,
+    [ICONS.LOGO_FULL]: require('../../../svg/logo.svg').default,
+    [ICONS.NO_RESULTS]: require('../../../svg/ghost.svg').default,
+    [ICONS.LOADER]: require('../../../svg/openreplay-preloader.svg').default,
+    [ICONS.SIGNAL_GREEN]: require('../../../svg/signal-green.svg').default,
+    [ICONS.SIGNAL_RED]: require('../../../svg/signal-red.svg').default,
+    [ICONS.NO_BOOKMARKS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_LIVE_SESSIONS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_SESSIONS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_SESSIONS_IN_VAULT]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_WEBHOOKS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_METADATA]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_ISSUES]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_AUDIT_TRAIL]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_ANNOUNCEMENTS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_ALERTS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_NOTES]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_CARDS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_RECORDINGS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_SEARCH_RESULTS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_DASHBOARDS]: require('../../../svg/ca-no-dashboards.svg').default,
+    [ICONS.NO_PROJECTS]: require('../../../svg/ghost.svg').default,
+    [ICONS.NO_FFLAGS]: require('../../../svg/ghost.svg').default,
+    [ICONS.PROCESSING]: require('../../../svg/ca-processing.svg').default,
+    [ICONS.NO_UXT]: require('../../../svg/empty-uxt-list.svg').default,
+};
 
 interface Props {
     name: string;
     size?: number;
 }
-function AnimatedSVG(props: Props) {
-    const { name, size = 24 } = props;
-    const renderSvg = () => {
-        switch (name) {
-            case ICONS.LOADER:
-                return <img style={{ width: size + 'px' }} src={LoaderSVG} />;
-            case ICONS.DASHBOARD_ICON:
-                return <img style={{ width: size + 'px' }} src={DashboardSvg} />;
-            case ICONS.EMPTY_STATE:
-                return <img style={{ width: size + 'px' }} src={EmptyStateSvg} />;
-            case ICONS.LOGO_SMALL:
-                return <img style={{ width: size + 'px' }} src={LogoSmall} />;
-            case ICONS.NO_RESULTS:
-                return <img style={{ width: size + 'px' }} src={NoResultsSVG} />;
-            case ICONS.SIGNAL_GREEN:
-                return <img style={{ width: size + 'px' }} src={SignalGreenSvg} />;
-            case ICONS.SIGNAL_RED:
-                return <img style={{ width: size + 'px' }} src={SignalRedSvg} />;
-            case ICONS.NO_BOOKMARKS:
-                return <img style={{ width: size + 'px' }} src={NoBookmarks} />;
-            case ICONS.NO_LIVE_SESSIONS:
-                return <img style={{ width: size + 'px' }} src={NoLiveSessions} />;
-            case ICONS.NO_SESSIONS:
-                return <img style={{ width: size + 'px' }} src={NoSessions} />;
-            case ICONS.NO_SESSIONS_IN_VAULT:
-                return <img style={{ width: size + 'px' }} src={NoSessionsInVault} />;
-            case ICONS.NO_WEBHOOKS:
-                return <img style={{ width: size + 'px' }} src={NoWebhooks} />;
-            case ICONS.NO_METADATA:
-                return <img style={{ width: size + 'px' }} src={NoMetadata} />;
-            case ICONS.NO_ISSUES:
-                return <img style={{ width: size + 'px' }} src={NoIssues} />;
-            case ICONS.NO_AUDIT_TRAIL:
-                return <img style={{ width: size + 'px' }} src={NoAuditTrail} />;
-            case ICONS.NO_ANNOUNCEMENTS:
-                return <img style={{ width: size + 'px' }} src={NoAnnouncements} />;
-            case ICONS.NO_ALERTS:
-                return <img style={{ width: size + 'px' }} src={NoAlerts} />;
-            default:
-                return null;
-        }
-    };
-    return <div>{renderSvg()}</div>;
+
+function AnimatedSVG(props: Props): JSX.Element | null {
+    const {name, size = 24} = props;
+
+    // @ts-ignore
+    const SvgIcon = ICONS_SVGS[name];
+
+    if (!SvgIcon) {
+        return null;
+    }
+
+    return <img src={SvgIcon} style={{width: size + 'px'}} alt={name}/>;
 }
 
 export default AnimatedSVG;

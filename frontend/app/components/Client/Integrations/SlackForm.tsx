@@ -1,18 +1,14 @@
 import React, { useEffect } from 'react';
 import SlackChannelList from './SlackChannelList/SlackChannelList';
-import { fetchList, init } from 'Duck/integrations/slack';
-import { connect } from 'react-redux';
 import SlackAddForm from './SlackAddForm';
-import { useModal } from 'App/components/Modal';
 import { Button } from 'UI';
+import { observer } from 'mobx-react-lite'
+import { useStore } from 'App/mstore'
 
-interface Props {
-    onEdit?: (integration: any) => void;
-    istance: any;
-    fetchList: any;
-    init: any;
-}
-const SlackForm = (props: Props) => {
+const SlackForm = () => {
+    const { integrationsStore } = useStore();
+    const init = integrationsStore.slack.init;
+    const fetchList = integrationsStore.slack.fetchIntegrations;
     const [active, setActive] = React.useState(false);
 
     const onEdit = () => {
@@ -21,11 +17,11 @@ const SlackForm = (props: Props) => {
 
     const onNew = () => {
         setActive(true);
-        props.init({});
+        init({});
     }
 
     useEffect(() => {
-        props.fetchList();
+        void fetchList();
     }, []);
 
     return (
@@ -38,7 +34,7 @@ const SlackForm = (props: Props) => {
             <div className="shrink-0" style={{ width: '350px' }}>
                 <div className="flex items-center p-5">
                     <h3 className="text-2xl mr-3">Slack</h3>
-                    <Button rounded={true} icon="plus" variant="outline" onClick={onNew}/>
+                    <Button rounded={true} icon="plus" iconSize={24} variant="outline" onClick={onNew}/>
                 </div>
                 <SlackChannelList onEdit={onEdit} />
             </div>
@@ -48,9 +44,4 @@ const SlackForm = (props: Props) => {
 
 SlackForm.displayName = 'SlackForm';
 
-export default connect(
-    (state: any) => ({
-        istance: state.getIn(['slack', 'instance']),
-    }),
-    { fetchList, init }
-)(SlackForm);
+export default observer(SlackForm);

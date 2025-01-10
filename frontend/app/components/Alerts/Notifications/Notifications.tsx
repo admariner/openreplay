@@ -1,51 +1,44 @@
 import React, { useEffect } from 'react';
 import stl from './notifications.module.css';
-import { connect } from 'react-redux';
 import { Icon, Tooltip } from 'UI';
-import { fetchList, setViewed, clearAll } from 'Duck/notifications';
-import { setLastRead } from 'Duck/announcements';
 import { useModal } from 'App/components/Modal';
 import AlertTriggersModal from 'Shared/AlertTriggersModal';
 import { useStore } from 'App/mstore';
-import { useObserver } from 'mobx-react-lite';
+import { observer } from 'mobx-react-lite';
+import { Badge, Button } from 'antd';
+import { BellOutlined } from '@ant-design/icons';
+
 
 const AUTOREFRESH_INTERVAL = 5 * 60 * 1000;
 
-interface Props {
-  notifications: any;
-  fetchList: any;
-}
-function Notifications(props: Props) {
+function Notifications() {
   const { showModal } = useModal();
   const { notificationStore } = useStore();
-  const count = useObserver(() => notificationStore.notificationsCount);
+  const count = notificationStore.notificationsCount;
 
   useEffect(() => {
     const interval = setInterval(() => {
-      notificationStore.fetchNotificationsCount();
+      try {
+        void notificationStore.fetchNotificationsCount();
+      } catch (e) {
+        console.error(e);
+      }
     }, AUTOREFRESH_INTERVAL);
 
     return () => clearInterval(interval);
   }, []);
 
-  return useObserver(() => (
-    <Tooltip title={`Alerts`}>
-      <div
-        className={stl.button}
-        onClick={() => showModal(<AlertTriggersModal />, { right: true })}
-      >
-        <div className={stl.counter} data-hidden={count === 0}>
-          {count}
-        </div>
-        <Icon name="bell" size="18" color="gray-dark" />
-      </div>
-    </Tooltip>
-  ));
+  return (
+    <Badge dot={count > 0} size='small'>
+      <Tooltip title='Alerts'>
+        <Button
+          icon={<BellOutlined />}
+          onClick={() => showModal(<AlertTriggersModal />, { right: true })}>
+          {/*<Icon name='bell' size='18' color='gray-dark' />*/}
+        </Button>
+      </Tooltip>
+    </Badge>
+  );
 }
 
-export default connect(
-  (state: any) => ({
-    notifications: state.getIn(['notifications', 'list']),
-  }),
-  { fetchList, setLastRead, setViewed, clearAll }
-)(Notifications);
+export default observer(Notifications);

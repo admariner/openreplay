@@ -1,42 +1,76 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import AnimatedSVG, { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
 import FilterList from 'Shared/Filters/FilterList';
 import FilterSelection from 'Shared/Filters/FilterSelection';
 import SaveFilterButton from 'Shared/SaveFilterButton';
-import { connect } from 'react-redux';
-import { Button } from 'UI';
-import { edit, addFilter } from 'Duck/search';
-import SessionSearchQueryParamHandler from 'Shared/SessionSearchQueryParamHandler';
+import { FilterKey } from 'Types/filter/filterType';
+import { addOptionsToFilter } from 'Types/filter/newFilter';
+import { Button, Loader } from 'UI';
+import { observer } from 'mobx-react-lite';
+import { useStore } from 'App/mstore';
+import { debounce } from 'App/utils';
+import useSessionSearchQueryHandler from 'App/hooks/useSessionSearchQueryHandler';
 
-interface Props {
-  appliedFilter: any;
-  edit: typeof edit;
-  addFilter: typeof addFilter;
-  saveRequestPayloads: boolean;
-  metaLoading?: boolean
-}
-function SessionSearch(props: Props) {
-  const { appliedFilter, saveRequestPayloads = false, metaLoading } = props;
-  const hasEvents = appliedFilter.filters.filter((i: any) => i.isEvent).size > 0;
-  const hasFilters = appliedFilter.filters.filter((i: any) => !i.isEvent).size > 0;
+let debounceFetch: () => void;
 
+function SessionSearch() {
+  const { tagWatchStore, aiFiltersStore, searchStore, customFieldStore, projectsStore } = useStore();
+  const appliedFilter = searchStore.instance;
+  const metaLoading = customFieldStore.isLoading;
+  const hasEvents = appliedFilter.filters.some((i: any) => i.isEvent);
+  const hasFilters = appliedFilter.filters.some((i: any) => !i.isEvent);
+  const saveRequestPayloads = projectsStore.instance?.saveRequestPayloads ?? false;
+
+  useSessionSearchQueryHandler({
+    appliedFilter,
+    loading: metaLoading,
+    onBeforeLoad: async () => {
+      try {
+        const tags = await tagWatchStore.getTags();
+        if (tags) {
+          addOptionsToFilter(
+            FilterKey.TAGGED_ELEMENT,
+            tags.map((tag) => ({
+              label: tag.name,
+              value: tag.tagId.toString()
+            }))
+          );
+          searchStore.refreshFilterOptions();
+        }
+      } catch (error) {
+        console.error('Error during onBeforeLoad:', error);
+      }
+    }
+  });
+
+  useEffect(() => {
+    debounceFetch = debounce(() => searchStore.fetchSessions(), 500);
+  }, []);
+
+  useEffect(() => {
+    if (searchStore.urlParsed) return;
+    debounceFetch();
+  }, [appliedFilter.filters]);
 
   const onAddFilter = (filter: any) => {
-    props.addFilter(filter);
+    searchStore.addFilter(filter);
+
+    debounceFetch();
   };
 
   const onUpdateFilter = (filterIndex: any, filter: any) => {
-    const newFilters = appliedFilter.filters.map((_filter: any, i: any) => {
-      if (i === filterIndex) {
-        return filter;
-      } else {
-        return _filter;
-      }
+    searchStore.updateFilter(filterIndex, filter);
+
+    debounceFetch();
+  };
+
+  const onFilterMove = (newFilters: any) => {
+    searchStore.updateFilter(0, {
+      ...appliedFilter,
+      filters: newFilters
     });
 
-    props.edit({
-      ...appliedFilter,
-      filters: newFilters,
-    });
+    debounceFetch();
   };
 
   const onRemoveFilter = (filterIndex: any) => {
@@ -44,63 +78,61 @@ function SessionSearch(props: Props) {
       return i !== filterIndex;
     });
 
-    props.edit({
-      filters: newFilters,
-    });
+    searchStore.removeFilter(filterIndex);
+
+    debounceFetch();
   };
 
   const onChangeEventsOrder = (e: any, { value }: any) => {
-    props.edit({
-      eventsOrder: value,
+    searchStore.edit({
+      eventsOrder: value
     });
+
+    debounceFetch();
   };
 
-  return !metaLoading && (
-    <>
-      <SessionSearchQueryParamHandler />
-      {hasEvents || hasFilters ? (
-        <div className="border bg-white rounded mt-4">
-          <div className="p-5">
-            <FilterList
-              filter={appliedFilter}
-              onUpdateFilter={onUpdateFilter}
-              onRemoveFilter={onRemoveFilter}
-              onChangeEventsOrder={onChangeEventsOrder}
-              saveRequestPayloads={saveRequestPayloads}
-            />
-          </div>
+  const showPanel = hasEvents || hasFilters || aiFiltersStore.isLoading;
 
-          <div className="border-t px-5 py-1 flex items-center -mx-2">
-            <div>
-              <FilterSelection filter={undefined} onFilterClick={onAddFilter}>
-                {/* <IconButton primaryText label="ADD STEP" icon="plus" /> */}
-                <Button
-                  variant="text-primary"
-                  className="mr-2"
-                  // onClick={() => setshowModal(true)}
-                  icon="plus"
-                >
-                  ADD STEP
-                </Button>
-              </FilterSelection>
-            </div>
-            <div className="ml-auto flex items-center">
-              <SaveFilterButton />
-            </div>
+  if (metaLoading) return null;
+  if (!showPanel) return null;
+
+  return (
+    <div className="border bg-white rounded-lg mt-4">
+      <div className="p-5">
+        {aiFiltersStore.isLoading ? (
+          <div className={'font-semibold flex items-center gap-2 mb-2'}>
+            <AnimatedSVG name={ICONS.LOADER} size={18} />
+            <span>Translating your query into search steps...</span>
+          </div>
+        ) : null}
+        {hasEvents || hasFilters ? (
+          <FilterList
+            filter={appliedFilter}
+            onUpdateFilter={onUpdateFilter}
+            onRemoveFilter={onRemoveFilter}
+            onChangeEventsOrder={onChangeEventsOrder}
+            onFilterMove={onFilterMove}
+            saveRequestPayloads={saveRequestPayloads}
+          />
+        ) : null}
+      </div>
+
+      {hasEvents || hasFilters ? (
+        <div className="border-t px-5 py-1 flex items-center -mx-2">
+          <div>
+            <FilterSelection filter={undefined} onFilterClick={onAddFilter}>
+              <Button variant="text-primary" className="mr-2" icon="plus">
+                ADD STEP
+              </Button>
+            </FilterSelection>
+          </div>
+          <div className="ml-auto flex items-center">
+            <SaveFilterButton />
           </div>
         </div>
-      ) : (
-        <></>
-      )}
-    </>
+      ) : null}
+    </div>
   );
 }
 
-export default connect(
-  (state: any) => ({
-    saveRequestPayloads: state.getIn(['site', 'instance', 'saveRequestPayloads']),
-    appliedFilter: state.getIn(['search', 'instance']),
-    metaLoading: state.getIn(['customFields', 'fetchRequestActive', 'loading'])
-  }),
-  { edit, addFilter }
-)(SessionSearch);
+export default observer(SessionSearch);
