@@ -1,23 +1,27 @@
-import type Message from '../common/messages.gen.js'
+// Do strong type WebWorker as soon as it is possible:
+// https://github.com/microsoft/TypeScript/issues/14877
+// At the moment "webworker" lib conflicts with  jest-environment-jsdom that uses "dom" lib
 import { Type as MType } from '../common/messages.gen.js'
-import { ToWorkerData, FromWorkerData } from '../common/interaction.js'
+import { FromWorkerData } from '../common/interaction.js'
 
 import QueueSender from './QueueSender.js'
 import BatchWriter from './BatchWriter.js'
 
-declare function postMessage(message: FromWorkerData): void
+declare function postMessage(message: FromWorkerData, transfer?: any[]): void
 
 enum WorkerStatus {
   NotActive,
   Starting,
   Stopping,
   Active,
+  Stopped,
 }
 
 const AUTO_SEND_INTERVAL = 10 * 1000
 
 let sender: QueueSender | null = null
 let writer: BatchWriter | null = null
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let workerStatus: WorkerStatus = WorkerStatus.NotActive
 
 function finalize(): void {
@@ -30,6 +34,7 @@ function finalize(): void {
 function resetWriter(): void {
   if (writer) {
     writer.clean()
+    // we don't need to wait for anything here since its sync
     writer = null
   }
 }
@@ -37,62 +42,101 @@ function resetWriter(): void {
 function resetSender(): void {
   if (sender) {
     sender.clean()
-    sender = null
+    // allowing some time to send last batch
+    setTimeout(() => {
+      sender = null
+    }, 20)
   }
 }
 
-function reset(): void {
-  workerStatus = WorkerStatus.Stopping
-  if (sendIntervalID !== null) {
-    clearInterval(sendIntervalID)
-    sendIntervalID = null
-  }
-  resetWriter()
-  resetSender()
-  workerStatus = WorkerStatus.NotActive
+function reset(): Promise<any> {
+  return new Promise((res) => {
+    workerStatus = WorkerStatus.Stopping
+    if (sendIntervalID !== null) {
+      clearInterval(sendIntervalID)
+      sendIntervalID = null
+    }
+    resetWriter()
+    resetSender()
+    setTimeout(() => {
+      workerStatus = WorkerStatus.NotActive
+      res(null)
+    }, 100)
+  })
 }
 
 function initiateRestart(): void {
-  postMessage('restart')
-  reset()
+  if ([WorkerStatus.Stopped, WorkerStatus.Stopping].includes(workerStatus)) return
+  postMessage('a_stop')
+  // eslint-disable-next-line
+  reset().then(() => {
+    postMessage('a_start')
+  })
 }
+
 function initiateFailure(reason: string): void {
   postMessage({ type: 'failure', reason })
-  reset()
+  void reset()
 }
 
 let sendIntervalID: ReturnType<typeof setInterval> | null = null
 let restartTimeoutID: ReturnType<typeof setTimeout>
 
-self.onmessage = ({ data }: MessageEvent<ToWorkerData>): any => {
+// @ts-ignore
+self.onmessage = ({ data }: { data: ToWorkerData }): any => {
   if (data == null) {
     finalize()
     return
   }
   if (data === 'stop') {
     finalize()
-    reset()
+    // eslint-disable-next-line
+    reset().then(() => {
+      workerStatus = WorkerStatus.Stopped
+    })
+    return
+  }
+  if (data === 'forceFlushBatch') {
+    finalize()
     return
   }
 
   if (Array.isArray(data)) {
-    // Message[]
-    if (!writer) {
-      throw new Error('WebWorker: writer not initialised. Service Should be Started.')
-    }
-    const w = writer
-    data.forEach((message) => {
-      if (message[0] === MType.SetPageVisibility) {
-        if (message[1]) {
-          // .hidden
-          restartTimeoutID = setTimeout(() => initiateRestart(), 30 * 60 * 1000)
-        } else {
-          clearTimeout(restartTimeoutID)
+    if (writer) {
+      const w = writer
+      data.forEach((message) => {
+        if (message[0] === MType.SetPageVisibility) {
+          if (message[1]) {
+            // .hidden
+            restartTimeoutID = setTimeout(() => initiateRestart(), 30 * 60 * 1000)
+          } else {
+            clearTimeout(restartTimeoutID)
+          }
         }
-      }
-      w.writeMessage(message)
-    })
+        w.writeMessage(message)
+      })
+    } else {
+      postMessage('not_init')
+      initiateRestart()
+    }
     return
+  }
+
+  if (data.type === 'compressed') {
+    if (!sender) {
+      console.debug('OR WebWorker: sender not initialised. Compressed batch.')
+      initiateRestart()
+      return
+    }
+    data.batch && sender.sendCompressed(data.batch)
+  }
+  if (data.type === 'uncompressed') {
+    if (!sender) {
+      console.debug('OR WebWorker: sender not initialised. Uncompressed batch.')
+      initiateRestart()
+      return
+    }
+    data.batch && sender.sendUncompressed(data.batch)
   }
 
   if (data.type === 'start') {
@@ -109,13 +153,20 @@ self.onmessage = ({ data }: MessageEvent<ToWorkerData>): any => {
       },
       data.connAttemptCount,
       data.connAttemptGap,
+      (batch) => {
+        postMessage({ type: 'compress', batch }, [batch.buffer])
+      },
+      data.pageNo,
     )
     writer = new BatchWriter(
       data.pageNo,
       data.timestamp,
       data.url,
-      // onBatch
-      (batch) => sender && sender.push(batch),
+      (batch) => {
+        sender && sender.push(batch)
+      },
+      data.tabId,
+      () => postMessage({ type: 'queue_empty' }),
     )
     if (sendIntervalID === null) {
       sendIntervalID = setInterval(finalize, AUTO_SEND_INTERVAL)
@@ -125,11 +176,17 @@ self.onmessage = ({ data }: MessageEvent<ToWorkerData>): any => {
 
   if (data.type === 'auth') {
     if (!sender) {
-      throw new Error('WebWorker: sender not initialised. Received auth.')
+      console.debug('OR WebWorker: sender not initialised. Received auth.')
+      initiateRestart()
+      return
     }
+
     if (!writer) {
-      throw new Error('WebWorker: writer not initialised. Received auth.')
+      console.debug('OR WebWorker: writer not initialised. Received auth.')
+      initiateRestart()
+      return
     }
+
     sender.authorise(data.token)
     data.beaconSizeLimit && writer.setBeaconSizeLimit(data.beaconSizeLimit)
     return

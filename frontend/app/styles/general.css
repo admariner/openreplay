@@ -1,3 +1,27 @@
+:root{
+  --bg-teal: #394dfe;
+}
+
+.ant-btn{
+  border-radius: .5rem;
+}
+
+.ant-btn-primary{
+  background-color: var(--bg-teal);
+}
+
+:root{
+  --bg-teal: #394dfe;
+}
+
+.ant-btn{
+  border-radius: .5rem;
+}
+
+.ant-btn-primary{
+  background-color: var(--bg-teal);
+}
+
 .ml-15 { margin-left: 15px; }
 
 .ph-10 { padding-left: 10px; padding-right: 10px; }
@@ -256,8 +280,14 @@
   padding: 1px 2px;
 }
 
+.highlight-blue {
+  background-color: $active-blue;
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
 .hljs {
-  padding: 10px !important;
+  padding: 12px !important;
   border-radius: 6px !important;
   background-color: $gray-lightest !important;
   font-size: 12px !important;
@@ -326,6 +356,8 @@ p {
   white-space: nowrap !important;
 }
 
+
+
 .stripes {
   background: repeating-linear-gradient(
     135deg,
@@ -359,4 +391,52 @@ p {
 
 .dev-row  {
   transition: all 0.5s;
+}
+
+.hover-color-teal:hover {
+  color: $teal !important;
+  & div {
+    color: $teal !important;
+  }
+  & svg {
+    fill: $teal !important;
+  }
+}
+
+.text-area {
+  border: solid thin #ddd;
+  border-radius: 3px;
+  resize: none;
+  background-color: #ffff;
+}
+
+.ant-menu-light .ant-menu-item-selected, :where(.css-dev-only-do-not-override).ant-menu-light>.ant-menu .ant-menu-item-selected{
+  background-color: #E6E9FA;
+}
+
+.dashboardDataPeriodSelector .dashboardMoreOptionsLabel{
+  display: none;
+}
+
+.utStatusToggler .ant-select-selector{
+  border-radius: .5rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+
+.eg-card input[name="search"] {
+  visibility: hidden !important;
+}
+
+.ant-segmented-group{
+  gap:0.25rem;
+}
+
+.ant-segmented-item-label {
+  display: flex;
+  align-items: center;
+}
+
+.ant-segmented-item{
+  border-radius: .5rem !important;
 }

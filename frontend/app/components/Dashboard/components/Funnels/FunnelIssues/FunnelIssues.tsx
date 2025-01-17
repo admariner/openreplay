@@ -23,15 +23,19 @@ function FunnelIssues() {
         
         const newFilter = {
             ...filter,
+            metricType: widget.metricType,
+            metricFormat: widget.metricFormat,
+            metricOf: widget.metricOf,
+            metricValue: widget.metricValue,
             series: filter.series.map((item: any) => {
                 return {
                     ...item,
                     filter: {
                         ...item.filter,
                         filters: item.filter.filters.filter((filter: any, index: any) => {
-                            const stage = widget.data.funnel.stages[index];
+                            const stage = widget.data.funnel?.stages[index];
                             return stage &&stage.isActive
-                        })
+                        }).map((f: any) => f.toJson())
                     }
                 }
             }),
@@ -49,15 +53,15 @@ function FunnelIssues() {
     const depsString = JSON.stringify(widget.series);
 
     useEffect(() => {
-        debounceRequest({ ...filter, series: widget.toJsonDrilldown(), page: metricStore.sessionsPage, limit: metricStore.sessionsPageSize });
+        debounceRequest({ ...filter, series: widget.series, page: metricStore.sessionsPage, limit: metricStore.sessionsPageSize });
     }, [stages.length, drillDownPeriod, filter.filters, depsString, metricStore.sessionsPage]);
 
     return useObserver(() => (
-        <div className="my-8 bg-white rounded p-4 border">
+        <div className="bg-white rounded-lg mt-4 p-4 border">
             <div className="flex">
-                <h1 className="font-medium text-2xl">Most significant issues <span className="font-normal">identified in this funnel</span></h1>
+                <h2 className="font-medium text-xl">Significant issues <span className="font-normal"> in this funnel</span></h2>
             </div>
-            <div className="my-6 flex justify-between items-start">
+            <div className="my-6 flex justify-between items-center">
                 <FunnelIssuesDropdown />
                 <div className="flex-shrink-0">
                     <FunnelIssuesSort />

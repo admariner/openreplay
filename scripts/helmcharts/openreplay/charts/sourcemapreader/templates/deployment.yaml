@@ -43,16 +43,25 @@ spec:
           {{- .Values.healthCheck | toYaml | nindent 10}}
           {{- end}}
           env:
-            - name: AWS_ACCESS_KEY_ID
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key }}
+              value: '{{ $val }}'
+            {{- end}}
+            {{- range $key, $val := .Values.global.env }}
+            - name: {{ $key }}
+              value: '{{ $val }}'
+            {{- end }}
+            - name: S3_HOST
+              value: {{ .Values.global.s3.endpoint }}
+            - name: S3_KEY
               value: {{ .Values.global.s3.accessKey }}
-            - name: AWS_SECRET_ACCESS_KEY
+            - name: S3_SECRET
               value: {{ .Values.global.s3.secretKey }}
             - name: AWS_REGION
               value: '{{ .Values.global.s3.region }}'
             - name: LICENSE_KEY
               value: '{{ .Values.global.enterpriseEditionLicense }}'
-            - name: REDIS_STRING
-              value: '{{ .Values.global.redis.redisHost }}:{{ .Values.global.redis.redisPort }}'
+            {{- include "openreplay.env.redis_string" .Values.global.redis | nindent 12 }}
             - name: KAFKA_SERVERS
               value: '{{ .Values.global.kafka.kafkaHost }}:{{ .Values.global.kafka.kafkaPort }}'
             - name: KAFKA_USE_SSL
@@ -67,22 +76,7 @@ spec:
             # 4. Using AWS itself.
             # AWS uses bucketname.endpoint/object while others use endpoint/bucketname/object
             - name: ASSETS_ORIGIN
-            {{- if contains "minio" .Values.global.s3.endpoint }}
-              # Local minio Installation
-              value: 'sourcemapreaders://{{ .Values.global.domainName }}:{{.Values.global.ingress.controller.service.ports.https}}/{{.Values.global.s3.assetsBucket}}'
-            {{- else if contains "amazonaws.com" .Values.global.s3.endpoint }}
-              # AWS S3
-              # Ref: sourcemapreaders://stackoverflow.com/questions/53634583/go-template-split-string-by-delimiter
-              # We need sourcemapreaders://bucketname.s3endpoint
-              value: {{ (split "://" .Values.global.s3.endpoint)._0 }}://{{.Values.global.s3.assetsBucket}}.{{ (split "://" .Values.global.s3.endpoint)._1 }}
-            {{- else }}
-              # S3 compatible storage
-              value: '{{ .Values.global.s3.endpoint }}/{{.Values.global.s3.assetsBucket}}'
-            {{- end }}
-            {{- range $key, $val := .Values.env }}
-            - name: {{ $key }}
-              value: '{{ $val }}'
-            {{- end}}
+              value: "{{ include "openreplay.s3Endpoint" . }}/{{.Values.global.s3.assetsBucket}}"
           ports:
             {{- range $key, $val := .Values.service.ports }}
             - name: {{ $key }}

@@ -38,11 +38,11 @@ function UserListItem(props: Props) {
   } = props;
   return (
     <div
-      className="grid grid-cols-12 py-4 px-5 border-t items-center select-none hover:bg-active-blue group cursor-pointer"
+      className="grid grid-cols-12 py-4 px-5 items-center select-none hover:bg-active-blue group cursor-pointer"
       onClick={editHandler}
     >
       <div className="col-span-5">
-        <span className="mr-2">{user.name}</span>
+        <span className="mr-2 capitalize">{user.name}</span>
         {/* {isEnterprise && <AdminPrivilegeLabel user={user} />} */}
       </div>
       <div className="col-span-3">

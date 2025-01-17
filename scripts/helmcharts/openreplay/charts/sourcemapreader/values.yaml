@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: "{{ .Values.global.openReplayContainerRegistry }}/sourcemaps-reader"
+  repository: "{{ .Values.global.openReplayContainerRegistry }}/sourcemapreader"
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -48,6 +48,7 @@ service:
   type: ClusterIP
   ports:
     sourcemapreader: 9000
+    metrics: 8888
 
 serviceMonitor:
   enabled: false

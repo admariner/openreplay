@@ -1,5 +1,5 @@
 .wrapper {
-  border-radius: 3px;
+  border-radius: .5rem;
   border: solid thin $gray-light;
   padding: 20px;
   overflow: hidden;
@@ -14,9 +14,6 @@
   &:hover {
     background-color: $active-blue;
     color: $teal !important;
-    & svg {
-      fill: $teal !important;
-    }
   }
 }
 
@@ -24,10 +21,6 @@
   &:hover {
     background-color: $active-blue;
     color: $teal;
-
-    & svg {
-      fill: $teal;
-    }
   }
 
   & div {

@@ -43,16 +43,27 @@ spec:
           {{- .Values.healthCheck | toYaml | nindent 10}}
           {{- end}}
           env:
+            {{- include "openreplay.env.redis_string" .Values.global.redis | nindent 12 }}
+            - name: KAFKA_SERVERS
+              value: "{{ .Values.global.kafka.kafkaHost }}"
+            - name: ch_username
+              value: "{{ .Values.global.clickhouse.username }}"
+            - name: ch_password
+              value: "{{ .Values.global.clickhouse.password }}"
             - name: ch_host
               value: "{{ .Values.global.clickhouse.chHost }}"
             - name: ch_port
               value: "{{ .Values.global.clickhouse.service.webPort }}"
             - name: sourcemaps_reader
-              value: "http://sourcemapreader-openreplay.{{.Release.Namespace}}.{{.Values.global.clusterDomain}}:9000/sourcemaps/%s/sourcemaps"
+              value: "http://sourcemapreader-openreplay.{{.Release.Namespace}}.{{.Values.global.clusterDomain}}:9000/%s/sourcemaps"
             - name: ASSIST_URL
               value: "http://assist-openreplay.{{.Release.Namespace}}.{{.Values.global.clusterDomain}}:9001/assist/%s"
             - name: ASSIST_JWT_SECRET
               value: {{ .Values.global.assistJWTSecret }}
+            - name: JWT_SECRET
+              value: {{ .Values.global.jwtSecret }}
+            - name: JWT_SPOT_SECRET
+              value: {{ .Values.global.jwtSpotSecret }}
             - name: ASSIST_KEY
               value: {{ .Values.global.assistKey }}
             - name: LICENSE_KEY
@@ -62,7 +73,7 @@ spec:
             - name: pg_host
               value: '{{ .Values.global.postgresql.postgresqlHost }}'
             - name: pg_port
-              value: "5432"
+              value: '{{ .Values.global.postgresql.postgresqlPort }}'
             - name: pg_dbname
               value: "{{ .Values.global.postgresql.postgresqlDatabase }}"
             - name: pg_user
@@ -77,13 +88,9 @@ spec:
               value: '{{ .Values.global.postgresql.postgresqlPassword }}'
               {{- end}}
             - name: SITE_URL
-              value: 'https://{{ .Values.global.domainName }}'
+              value: '{{- include "openreplay.domainURL" . }}'
             - name: S3_HOST
-              {{- if contains "minio" .Values.global.s3.endpoint }}
-              value: 'https://{{ .Values.global.domainName }}:{{ .Values.global.ingress.controller.service.ports.https}}'
-              {{- else}}
-              value: '{{ .Values.global.s3.endpoint }}'
-              {{- end}}
+              value: '{{- include "openreplay.s3Endpoint" . }}'
             - name: S3_KEY
               {{- if .Values.global.s3.existingSecret }}
               valueFrom:
@@ -106,7 +113,11 @@ spec:
               value: '{{ .Values.global.s3.region }}'
             - name: sessions_region
               value: '{{ .Values.global.s3.region }}' 
+            - name: ASSIST_RECORDS_BUCKET
+              value: {{ .Values.global.s3.assistRecordsBucket }}
             - name: sessions_bucket
+              value: {{ .Values.global.s3.recordingsBucket }}
+            - name: IOS_VIDEO_BUCKET
               value: {{ .Values.global.s3.recordingsBucket }}
             - name: sourcemaps_bucket
               value: {{ .Values.global.s3.sourcemapsBucket }} 
@@ -130,10 +141,18 @@ spec:
               value: '{{ .Values.global.email.emailSslCert }}'
             - name: EMAIL_FROM
               value: '{{ .Values.global.email.emailFrom }}'
+            {{- range $key, $val := .Values.global.env }}
+            - name: {{ $key }}
+              value: '{{ $val }}'
+            {{- end }}
             {{- range $key, $val := .Values.env }}
             - name: {{ $key }}
               value: '{{ $val }}'
             {{- end}}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           ports:
             {{- range $key, $val := .Values.service.ports }}
             - name: {{ $key }}
@@ -153,7 +172,7 @@ spec:
       - name: datadir
         hostPath:
           # Ensure the file directory is created.
-          path: {{ .Values.pvc.hostMountPath }}
+          path: {{ tpl .Values.pvc.hostMountPath . }}
           type: DirectoryOrCreate
       {{- with .Values.persistence.volumes  }}
       {{- toYaml . | nindent 6 }}

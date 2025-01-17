@@ -7,7 +7,7 @@ class String
     self.sub('Id', 'ID').sub('Url', 'URL')
   end
 
-  # pascal_case
+  # PascalCase
   def pascal_case
     return self if self !~ /_/ && self =~ /[A-Z]+.*/
     split('_').map{|e| e.capitalize}.join.upperize_abbreviations
@@ -69,6 +69,23 @@ class Attribute
     end
   end
 
+  def type_pyx
+    case @type
+    when :int
+      'long'
+    when :uint
+      'unsigned long'
+    when :string
+      'str'
+    when :data
+      'str'
+    when :boolean
+      'bint'
+    when :json
+      'str'
+    end
+  end
+
   def lengh_encoded
     case @type
     when :string, :data
@@ -84,14 +101,13 @@ end
 $context = :web
 
 class Message
-  attr_reader :id, :name, :tracker, :replayer, :swift, :seq_index, :attributes, :context
-  def initialize(name:, id:, tracker: $context == :web, replayer: $context == :web, swift: $context == :ios, seq_index: false, &block)
+  attr_reader :id, :name, :tracker, :replayer, :swift, :attributes, :context
+  def initialize(name:, id:, tracker: $context == :web, replayer: $context == :web, swift: $context == :ios, &block)
     @id = id
     @name = name
     @tracker = tracker
     @replayer = replayer
     @swift = swift
-    @seq_index = seq_index
     @context = $context
     @attributes = []
     # opts.each { |key, value| send "#{key}=", value }
@@ -113,7 +129,6 @@ $ids = []
 $messages = []
 def message(id, name, opts = {}, &block)
   raise "id duplicated #{name}" if $ids.include? id
-  raise "id is too big #{name}" if id > 127
   $ids << id
   opts[:id] = id
   opts[:name] = name
@@ -124,7 +139,7 @@ end
 require './messages.rb'
 
 $context = :ios
-require './ios_messages.rb'
+require './mobile_messages.rb'
 
 Dir["templates/*.erb"].each do |tpl|
   e = ERB.new(File.read(tpl))

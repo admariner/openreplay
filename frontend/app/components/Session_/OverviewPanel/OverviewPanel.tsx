@@ -1,57 +1,75 @@
-import { connectPlayer } from 'Player';
-import { toggleBottomBlock } from 'Duck/components/player';
+import { Segmented } from 'antd';
+import {InfoCircleOutlined} from '@ant-design/icons'
+import cn from 'classnames';
+import { observer } from 'mobx-react-lite';
 import React, { useEffect } from 'react';
+
+import {
+  MobilePlayerContext,
+  PlayerContext,
+} from 'App/components/Session/playerContext';
+import { useStore } from 'App/mstore';
+import SummaryBlock from 'Components/Session/Player/ReplayPlayer/SummaryBlock';
+import { SummaryButton } from 'Components/Session_/Player/Controls/Controls';
+import TimelineZoomButton from 'Components/Session_/Player/Controls/components/TimelineZoomButton';
+import { Icon, NoContent } from 'UI';
+import TabSelector from "../../shared/DevTools/TabSelector";
+
 import BottomBlock from '../BottomBlock';
 import EventRow from './components/EventRow';
-import { TYPES } from 'Types/session/event';
-import { connect } from 'react-redux';
-import TimelineScale from './components/TimelineScale';
-import FeatureSelection, { HELP_MESSAGE } from './components/FeatureSelection/FeatureSelection';
-import TimelinePointer from './components/TimelinePointer';
-import VerticalPointerLine from './components/VerticalPointerLine';
-import cn from 'classnames';
-// import VerticalLine from './components/VerticalLine';
+import FeatureSelection, {
+  HELP_MESSAGE,
+} from './components/FeatureSelection/FeatureSelection';
 import OverviewPanelContainer from './components/OverviewPanelContainer';
-import { NoContent, Icon } from 'UI';
+import TimelinePointer from './components/TimelinePointer';
+import TimelineScale from './components/TimelineScale';
+import VerticalPointerLine, { VerticalPointerLineComp } from './components/VerticalPointerLine';
 
-interface Props {
-  resourceList: any[];
-  exceptionsList: any[];
-  eventsList: any[];
-  toggleBottomBlock: any;
-  stackEventList: any[];
-  issuesList: any[];
-  performanceChartData: any;
-  endTime: number;
-  fetchPresented?: boolean;
-}
-function OverviewPanel(props: Props) {
-  const { fetchPresented = false } = props;
+function MobileOverviewPanelCont() {
+  const { aiSummaryStore, uiPlayerStore, sessionStore } = useStore();
+  const sessionId = sessionStore.current.sessionId;
+  const issuesList = sessionStore.current.issues;
+  const zoomEnabled = uiPlayerStore.timelineZoom.enabled;
+  const zoomStartTs = uiPlayerStore.timelineZoom.startTs;
+  const zoomEndTs = uiPlayerStore.timelineZoom.endTs;
+  const setZoomTab = uiPlayerStore.setZoomTab;
+  const zoomTab = uiPlayerStore.zoomTab;
+  const { store, player } = React.useContext(MobilePlayerContext);
   const [dataLoaded, setDataLoaded] = React.useState(false);
   const [selectedFeatures, setSelectedFeatures] = React.useState([
     'PERFORMANCE',
+    'FRUSTRATIONS',
     'ERRORS',
-    // 'EVENTS',
     'NETWORK',
   ]);
 
-  const resources: any = React.useMemo(() => {
-    const {
-      resourceList,
-      exceptionsList,
-      eventsList,
-      stackEventList,
-      issuesList,
-      performanceChartData,
-    } = props;
-    return {
-      NETWORK: resourceList,
-      ERRORS: exceptionsList,
-      EVENTS: stackEventList,
-      CLICKRAGE: eventsList.filter((item: any) => item.type === TYPES.CLICKRAGE),
-      PERFORMANCE: performanceChartData,
-    };
-  }, [dataLoaded]);
+  const {
+    endTime,
+    eventList: eventsList,
+    frustrationsList,
+    exceptionsList,
+    fetchList,
+    performanceChartData,
+    performanceList,
+  } = store.get();
+
+  const fetchPresented = fetchList.length > 0;
+
+  const checkInZoomRange = (list: any[]) => {
+    return list.filter((i) =>
+      zoomEnabled ? i.time >= zoomStartTs && i.time <= zoomEndTs : true
+    );
+  };
+
+  const resources = {
+    NETWORK: checkInZoomRange(
+      fetchList.filter((r: any) => r.status >= 400 || r.isRed || r.isYellow)
+    ),
+    ERRORS: checkInZoomRange(exceptionsList),
+    EVENTS: checkInZoomRange(eventsList),
+    PERFORMANCE: checkInZoomRange(performanceChartData),
+    FRUSTRATIONS: checkInZoomRange(frustrationsList),
+  };
 
   useEffect(() => {
     if (dataLoaded) {
@@ -59,68 +77,352 @@ function OverviewPanel(props: Props) {
     }
 
     if (
-      props.resourceList.length > 0 ||
-      props.exceptionsList.length > 0 ||
-      props.eventsList.length > 0 ||
-      props.stackEventList.length > 0 ||
-      props.issuesList.length > 0 ||
-      props.performanceChartData.length > 0
+      exceptionsList.length > 0 ||
+      eventsList.length > 0 ||
+      issuesList.length > 0 ||
+      performanceChartData.length > 0 ||
+      frustrationsList.length > 0
     ) {
       setDataLoaded(true);
     }
   }, [
-    props.resourceList,
-    props.exceptionsList,
-    props.eventsList,
-    props.stackEventList,
-    props.performanceChartData,
+    issuesList,
+    exceptionsList,
+    eventsList,
+    performanceChartData,
+    frustrationsList,
   ]);
 
+  React.useEffect(() => {
+    player.scale();
+  }, [selectedFeatures]);
+
+  const originStr = window.env.ORIGIN || window.location.origin;
+  const isSaas = /app\.openreplay\.com/.test(originStr);
   return (
-    <Wrapper {...props}>
-      <BottomBlock style={{ height: '245px' }}>
-        <BottomBlock.Header>
-          <span className="font-semibold color-gray-medium mr-4">X-RAY</span>
-          <div className="flex items-center h-20">
-            <FeatureSelection list={selectedFeatures} updateList={setSelectedFeatures} />
+    <PanelComponent
+      resources={resources}
+      endTime={endTime}
+      selectedFeatures={selectedFeatures}
+      fetchPresented={fetchPresented}
+      setSelectedFeatures={setSelectedFeatures}
+      isMobile
+      performanceList={performanceList}
+      sessionId={sessionId}
+      showSummary={isSaas}
+      toggleSummary={() =>
+        aiSummaryStore.setToggleSummary(!aiSummaryStore.toggleSummary)
+      }
+      summaryChecked={aiSummaryStore.toggleSummary}
+      setZoomTab={setZoomTab}
+      zoomTab={zoomTab}
+    />
+  );
+}
+
+function WebOverviewPanelCont() {
+  const { aiSummaryStore, uiPlayerStore, sessionStore } = useStore();
+  const sessionId = sessionStore.current.sessionId;
+  const zoomEnabled = uiPlayerStore.timelineZoom.enabled;
+  const zoomStartTs = uiPlayerStore.timelineZoom.startTs;
+  const zoomEndTs = uiPlayerStore.timelineZoom.endTs;
+  const setZoomTab = uiPlayerStore.setZoomTab;
+  const zoomTab = uiPlayerStore.zoomTab;
+  const { store } = React.useContext(PlayerContext);
+  const [selectedFeatures, setSelectedFeatures] = React.useState([
+    'PERFORMANCE',
+    'FRUSTRATIONS',
+    'ERRORS',
+    'NETWORK',
+  ]);
+
+  const { endTime, currentTab, tabStates } = store.get();
+
+  const tabValues = Object.values(tabStates);
+  const dataSource = uiPlayerStore.dataSource;
+  const showSingleTab = dataSource === 'current';
+
+  const {
+    stackEventList = [],
+    frustrationsList = [],
+    exceptionsList = [],
+    resourceListUnmap = [],
+    fetchList = [],
+    graphqlList = [],
+    performanceChartData = [],
+  } = React.useMemo(() => {
+    if (showSingleTab) {
+      const stackEventList = tabStates[currentTab].stackList;
+      const frustrationsList = tabStates[currentTab].frustrationsList;
+      const exceptionsList = tabStates[currentTab].exceptionsList;
+      const resourceListUnmap = tabStates[currentTab].resourceList;
+      const fetchList = tabStates[currentTab].fetchList;
+      const graphqlList = tabStates[currentTab].graphqlList;
+      const performanceChartData =
+        tabStates[currentTab].performanceChartData;
+
+      return {
+        stackEventList,
+        frustrationsList,
+        exceptionsList,
+        resourceListUnmap,
+        fetchList,
+        graphqlList,
+        performanceChartData,
+      }
+    } else {
+      const stackEventList = tabValues.flatMap((tab) => tab.stackList);
+      // these two are global
+      const frustrationsList = tabValues[0].frustrationsList;
+      const exceptionsList = tabValues[0].exceptionsList;
+      // we can't compute global chart data because some tabs coexist
+      const performanceChartData: any = [];
+      const resourceListUnmap = tabValues.flatMap((tab) => tab.resourceList);
+      const fetchList = tabValues.flatMap((tab) => tab.fetchList);
+      const graphqlList = tabValues.flatMap((tab) => tab.graphqlList);
+
+      return {
+        stackEventList,
+        frustrationsList,
+        exceptionsList,
+        resourceListUnmap,
+        fetchList,
+        graphqlList,
+        performanceChartData,
+      }
+    }
+  }, [tabStates, currentTab, dataSource, tabValues]);
+
+  const fetchPresented = fetchList.length > 0;
+  const resourceList = resourceListUnmap
+    .filter((r: any) => r.isRed || r.isYellow)
+    // @ts-ignore
+    .concat(fetchList.filter((i: any) => parseInt(i.status) >= 400))
+    // @ts-ignore
+    .concat(graphqlList.filter((i: any) => parseInt(i.status) >= 400))
+    .filter((i: any) => i.type === 'fetch');
+
+  const checkInZoomRange = (list: any[]) => {
+    return list.filter((i) =>
+      zoomEnabled ? i.time >= zoomStartTs && i.time <= zoomEndTs : true
+    );
+  };
+
+  const resources: any = React.useMemo(() => {
+    return {
+      NETWORK: checkInZoomRange(resourceList),
+      ERRORS: checkInZoomRange(exceptionsList),
+      EVENTS: checkInZoomRange(stackEventList),
+      PERFORMANCE: checkInZoomRange(performanceChartData),
+      FRUSTRATIONS: checkInZoomRange(frustrationsList),
+    };
+  }, [
+    tabStates,
+    currentTab,
+    zoomEnabled,
+    zoomStartTs,
+    zoomEndTs,
+    resourceList.length,
+    exceptionsList.length,
+    stackEventList.length,
+    performanceChartData.length,
+    frustrationsList.length,
+  ]);
+
+  const originStr = window.env.ORIGIN || window.location.origin;
+  const isSaas = /app\.openreplay\.com/.test(originStr);
+  return (
+    <PanelComponent
+      resources={resources}
+      endTime={endTime}
+      selectedFeatures={selectedFeatures}
+      fetchPresented={fetchPresented}
+      setSelectedFeatures={setSelectedFeatures}
+      showSummary={isSaas}
+      toggleSummary={() =>
+        aiSummaryStore.setToggleSummary(!aiSummaryStore.toggleSummary)
+      }
+      summaryChecked={aiSummaryStore.toggleSummary}
+      sessionId={sessionId}
+      setZoomTab={setZoomTab}
+      zoomTab={zoomTab}
+      showSingleTab={showSingleTab}
+    />
+  );
+}
+
+export function SpotOverviewPanelCont({
+  resourceList,
+  exceptionsList,
+  spotTime,
+  spotEndTime,
+  onClose,
+}: any) {
+  const selectedFeatures = ['ERRORS', 'NETWORK'];
+  const fetchPresented = false; // TODO
+  const endTime = 0; // TODO
+  const resources = {
+    NETWORK: resourceList,
+    ERRORS: exceptionsList,
+  };
+
+  return (
+    <PanelComponent
+      resources={resources}
+      endTime={endTime}
+      selectedFeatures={selectedFeatures}
+      fetchPresented={fetchPresented}
+      isSpot
+      spotTime={spotTime}
+      spotEndTime={spotEndTime}
+      onClose={onClose}
+    />
+  );
+}
+
+function PanelComponent({
+  selectedFeatures,
+  endTime,
+  resources,
+  fetchPresented,
+  setSelectedFeatures,
+  isMobile,
+  performanceList,
+  showSummary,
+  toggleSummary,
+  summaryChecked,
+  sessionId,
+  zoomTab,
+  setZoomTab,
+  isSpot,
+  spotTime,
+  spotEndTime,
+  onClose,
+  showSingleTab,
+}: any) {
+  return (
+    <React.Fragment>
+      <BottomBlock style={{ height: '100%' }}>
+        <BottomBlock.Header customClose={onClose}>
+          <div className="mr-4 flex items-center gap-2">
+            <span className={'font-semibold text-black'}>X-Ray</span>
+            {showSummary ? (
+              <>
+                <SummaryButton
+                  withToggle
+                  onClick={toggleSummary}
+                  toggleValue={summaryChecked}
+                />
+                {summaryChecked ? (
+                  <Segmented
+                    value={zoomTab}
+                    onChange={(val) => setZoomTab(val)}
+                    options={[
+                      {
+                        label: 'Overview',
+                        value: 'overview',
+                      },
+                      {
+                        label: 'User journey',
+                        value: 'journey',
+                      },
+                      {
+                        label: 'Issues',
+                        value: 'issues',
+                      },
+                      {
+                        label: 'Suggestions',
+                        value: 'errors',
+                      },
+                    ]}
+                  />
+                ) : null}
+              </>
+            ) : null}
           </div>
+          {isSpot ? null : (
+            <div className="flex items-center h-20 mr-4 gap-3">
+              <FeatureSelection
+                list={selectedFeatures}
+                updateList={setSelectedFeatures}
+              />
+              {!isMobile ? <TabSelector /> : null}
+              <TimelineZoomButton />
+            </div>
+          )}
         </BottomBlock.Header>
-        <BottomBlock.Content>
-          <OverviewPanelContainer endTime={props.endTime}>
-            <TimelineScale endTime={props.endTime} />
+        <BottomBlock.Content className={'overflow-y-auto'}>
+          {summaryChecked ? <SummaryBlock sessionId={sessionId} /> : null}
+          <OverviewPanelContainer endTime={endTime}>
+            <TimelineScale endTime={endTime} />
             <div
-              style={{ width: 'calc(100vw - 1rem)', margin: '0 auto', height: '187px' }}
+              style={{ width: 'calc(100% - 1rem)', margin: '0 auto' }}
               className="transition relative"
             >
               <NoContent
                 show={selectedFeatures.length === 0}
+                style={{ height: '60px', minHeight: 'unset', padding: 0 }}
                 title={
-                  <div className="flex items-center mt-16">
-                    <Icon name="info-circle" className="mr-2" size="18" />
+                  <div className="flex items-center">
+                    <InfoCircleOutlined size={18} />
                     Select a debug option to visualize on timeline.
                   </div>
                 }
               >
-                <VerticalPointerLine />
+                {isSpot ? (
+                  <VerticalPointerLineComp
+                    time={spotTime}
+                    endTime={spotEndTime}
+                  />
+                ) : (
+                  <VerticalPointerLine />
+                )}
                 {selectedFeatures.map((feature: any, index: number) => (
                   <div
                     key={feature}
-                    className={cn('border-b last:border-none', { 'bg-white': index % 2 })}
+                    className={cn('border-b last:border-none relative', {
+                      'bg-white': index % 2,
+                    })}
                   >
                     <EventRow
                       isGraph={feature === 'PERFORMANCE'}
                       title={feature}
+                      disabled={!isMobile && !showSingleTab}
                       list={resources[feature]}
-                      renderElement={(pointer: any) => (
+                      renderElement={(pointer: any[], isGrouped: boolean) => (
                         <TimelinePointer
                           pointer={pointer}
                           type={feature}
+                          isGrouped={isGrouped}
                           fetchPresented={fetchPresented}
                         />
                       )}
-                      endTime={props.endTime}
+                      endTime={isSpot ? spotEndTime : endTime}
                       message={HELP_MESSAGE[feature]}
                     />
+                    {isMobile && feature === 'PERFORMANCE' ? (
+                      <div
+                        className={
+                          'absolute top-0 left-0 flex items-center py-4 w-full'
+                        }
+                      >
+                        <EventRow
+                          isGraph={false}
+                          title={''}
+                          list={performanceList}
+                          renderElement={(pointer: any) => (
+                            <div className="rounded bg-white p-1 border">
+                              <TimelinePointer
+                                pointer={pointer}
+                                type={'FRUSTRATIONS'}
+                                fetchPresented={fetchPresented}
+                              />
+                            </div>
+                          )}
+                          endTime={endTime}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </NoContent>
@@ -128,32 +430,10 @@ function OverviewPanel(props: Props) {
           </OverviewPanelContainer>
         </BottomBlock.Content>
       </BottomBlock>
-    </Wrapper>
+    </React.Fragment>
   );
 }
 
-export default connect(
-  (state: any) => ({
-    issuesList: state.getIn(['sessions', 'current', 'issues']),
-  }),
-  {
-    toggleBottomBlock,
-  }
-)(
-  connectPlayer((state: any) => ({
-    fetchPresented: state.fetchList.length > 0,
-    resourceList: state.resourceList
-      .filter((r: any) => r.isRed() || r.isYellow())
-      .concat(state.fetchList.filter((i: any) => parseInt(i.status) >= 400))
-      .concat(state.graphqlList.filter((i: any) => parseInt(i.status) >= 400)),
-    exceptionsList: state.exceptionsList,
-    eventsList: state.eventList,
-    stackEventList: state.stackList,
-    performanceChartData: state.performanceChartData,
-    endTime: state.endTime,
-  }))(OverviewPanel)
-);
+export const OverviewPanel = observer(WebOverviewPanelCont);
 
-const Wrapper = React.memo((props: any) => {
-  return <>{props.children}</>;
-});
+export const MobileOverviewPanel = observer(MobileOverviewPanelCont);

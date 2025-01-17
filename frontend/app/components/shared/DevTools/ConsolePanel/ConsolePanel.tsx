@@ -1,17 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { connectPlayer, jump } from 'Player';
-import Log from 'Types/session/log';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { LogLevel, ILog } from 'Player';
 import BottomBlock from '../BottomBlock';
-import { LEVEL } from 'Types/session/log';
-import { Tabs, Input, Icon, NoContent } from 'UI';
+import { Tabs, Icon, NoContent } from 'UI';
+import {Input} from 'antd';
+import {SearchOutlined, InfoCircleOutlined} from '@ant-design/icons';
 import cn from 'classnames';
 import ConsoleRow from '../ConsoleRow';
-import { getRE } from 'App/utils';
-import { List, CellMeasurer, CellMeasurerCache, AutoSizer } from 'react-virtualized';
-import { useObserver } from 'mobx-react-lite';
+import { PlayerContext } from 'App/components/Session/playerContext';
+import { observer } from 'mobx-react-lite';
 import { useStore } from 'App/mstore';
 import ErrorDetailsModal from 'App/components/Dashboard/components/Errors/ErrorDetailsModal';
 import { useModal } from 'App/components/Modal';
+import TabSelector from "../TabSelector";
+import useAutoscroll, { getLastItemTime } from '../useAutoscroll';
+import { useRegExListFilterMemo, useTabListFilterMemo } from '../useListFilter';
+import { VList, VListHandle } from "virtua";
 
 const ALL = 'ALL';
 const INFO = 'INFO';
@@ -19,224 +22,212 @@ const WARNINGS = 'WARNINGS';
 const ERRORS = 'ERRORS';
 
 const LEVEL_TAB = {
-  [LEVEL.INFO]: INFO,
-  [LEVEL.LOG]: INFO,
-  [LEVEL.WARNING]: WARNINGS,
-  [LEVEL.ERROR]: ERRORS,
-  [LEVEL.EXCEPTION]: ERRORS,
-};
+  [LogLevel.INFO]: INFO,
+  [LogLevel.LOG]: INFO,
+  [LogLevel.WARN]: WARNINGS,
+  [LogLevel.ERROR]: ERRORS,
+  [LogLevel.EXCEPTION]: ERRORS,
+  [LogLevel.DEBUG]: INFO,
+} as const;
 
-const TABS = [ALL, ERRORS, WARNINGS, INFO].map((tab) => ({ text: tab, key: tab }));
+export const TABS = [ALL, ERRORS, WARNINGS, INFO].map((tab) => ({ text: tab, key: tab }));
 
-function renderWithNL(s = '') {
+const urlRegex = /(https?:\/\/[^\s)]+)/g;
+
+export function renderWithNL(s: string | null = '') {
   if (typeof s !== 'string') return '';
-  return s.split('\n').map((line, i) => <div className={cn({ 'ml-20': i !== 0 })}>{line}</div>);
+
+  return s.split('\n').map((line, i) => {
+    const parts = line.split(urlRegex);
+
+    const formattedLine = parts.map((part, index) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a key={`link-${index}`} className={'link text-main'} href={part} target="_blank" rel="noopener noreferrer">
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+
+    return (
+      <div key={i + line.slice(0, 6)} className={cn({ 'ml-20': i !== 0 })}>
+        {formattedLine}
+      </div>
+    );
+  });
 }
 
-const getIconProps = (level: any) => {
+
+export const getIconProps = (level: LogLevel) => {
   switch (level) {
-    case LEVEL.INFO:
-    case LEVEL.LOG:
+    case LogLevel.INFO:
+    case LogLevel.LOG:
       return {
         name: 'console/info',
         color: 'blue2',
       };
-    case LEVEL.WARN:
-    case LEVEL.WARNING:
+    case LogLevel.WARN:
       return {
         name: 'console/warning',
         color: 'red2',
       };
-    case LEVEL.ERROR:
+    case LogLevel.ERROR:
       return {
         name: 'console/error',
         color: 'red',
       };
+    default:
+      return {
+        name: 'console/info',
+      };
   }
-  return null;
 };
 
 const INDEX_KEY = 'console';
-let timeOut: any = null;
-const TIMEOUT_DURATION = 5000;
-interface Props {
-  logs: any;
-  exceptions: any;
-  time: any;
-}
-function ConsolePanel(props: Props) {
-  const { logs, time } = props;
-  const additionalHeight = 0;
-  // const [activeTab, setActiveTab] = useState(ALL);
-  // const [filter, setFilter] = useState('');
+
+function ConsolePanel({
+  isLive,
+}: {
+  isLive?: boolean;
+}) {
   const {
     sessionStore: { devTools },
+    uiPlayerStore,
   } = useStore();
-  const [filteredList, setFilteredList] = useState([]);
-  const filter = useObserver(() => devTools[INDEX_KEY].filter);
-  const activeTab = useObserver(() => devTools[INDEX_KEY].activeTab);
-  const activeIndex = useObserver(() => devTools[INDEX_KEY].index);
-  const [pauseSync, setPauseSync] = useState(activeIndex > 0);
-  const synRef: any = useRef({});
-  const { showModal, component: modalActive } = useModal();
+
+  const zoomEnabled = uiPlayerStore.timelineZoom.enabled;
+  const zoomStartTs = uiPlayerStore.timelineZoom.startTs;
+  const zoomEndTs = uiPlayerStore.timelineZoom.endTs;
+
+  const _list = useRef<VListHandle>(null);
+  const filter = devTools[INDEX_KEY].filter;
+  const activeTab = devTools[INDEX_KEY].activeTab;
+  // Why do we need to keep index in the store? if we could get read of it it would simplify the code
+  const activeIndex = devTools[INDEX_KEY].index;
+  const [isDetailsModalActive, setIsDetailsModalActive] = useState(false);
+  const { showModal } = useModal();
+
+  const { player, store } = React.useContext(PlayerContext);
+  const jump = (t: number) => player.jump(t);
+
+  const { currentTab, tabStates } = store.get();
+  const tabsArr = Object.keys(tabStates);
+  const tabValues = Object.values(tabStates);
+  const dataSource = uiPlayerStore.dataSource;
+  const showSingleTab = dataSource === 'current';
+  const { logList = [], exceptionsList = [], logListNow = [], exceptionsListNow = [] } = React.useMemo(() => {
+    if (showSingleTab) {
+      return tabStates[currentTab] ?? {};
+    } else {
+      const logList = tabValues.flatMap(tab => tab.logList);
+      const exceptionsList = tabValues.flatMap(tab => tab.exceptionsList);
+      const logListNow = isLive ? tabValues.flatMap(tab => tab.logListNow) : [];
+      const exceptionsListNow = isLive ? tabValues.flatMap(tab => tab.exceptionsListNow) : [];
+      return { logList, exceptionsList, logListNow, exceptionsListNow }
+    }
+  }, [currentTab, tabStates, dataSource, tabValues, isLive])
+  const getTabNum = (tab: string) => (tabsArr.findIndex((t) => t === tab) + 1);
+
+  const list = useMemo(() => {
+    if (isLive) {
+      return logListNow.concat(exceptionsListNow).sort((a, b) => a.time - b.time)
+    } else {
+      const logs = logList.concat(exceptionsList).sort((a, b) => a.time - b.time)
+      return zoomEnabled ? logs.filter(l => l.time >= zoomStartTs && l.time <= zoomEndTs) : logs
+    }
+  }, [isLive, logList.length, exceptionsList.length, logListNow.length, exceptionsListNow.length, zoomEnabled, zoomStartTs, zoomEndTs])
+  let filteredList = useRegExListFilterMemo(list, (l) => l.value, filter);
+  filteredList = useTabListFilterMemo(filteredList, (l) => LEVEL_TAB[l.level], ALL, activeTab);
 
   const onTabClick = (activeTab: any) => devTools.update(INDEX_KEY, { activeTab });
-  const onFilterChange = ({ target: { value } }: any) => {
+  const onFilterChange = ({ target: { value } }: any) =>
     devTools.update(INDEX_KEY, { filter: value });
-  };
 
-  synRef.current = {
-    pauseSync,
+  // AutoScroll
+  const [timeoutStartAutoscroll, stopAutoscroll] = useAutoscroll(
+    filteredList,
+    getLastItemTime(logListNow, exceptionsListNow),
     activeIndex,
-  };
-
-  const removePause = () => {
-    if (!!modalActive) return;
-    clearTimeout(timeOut);
-    timeOut = setTimeout(() => {
-      devTools.update(INDEX_KEY, { index: getCurrentIndex() });
-      setPauseSync(false);
-    }, TIMEOUT_DURATION);
-  };
-
+    (index) => devTools.update(INDEX_KEY, { index })
+  );
+  const onMouseEnter = stopAutoscroll;
   const onMouseLeave = () => {
-    removePause();
-  };
-
-  useEffect(() => {
-    if (pauseSync) {
-      removePause();
+    if (isDetailsModalActive) {
+      return;
     }
-
-    return () => {
-      clearTimeout(timeOut);
-      if (!synRef.current.pauseSync) {
-        devTools.update(INDEX_KEY, { index: 0 });
-      }
-    };
-  }, []);
-
-  const getCurrentIndex = () => {
-    return filteredList.filter((item: any) => item.time <= time).length - 1;
+    timeoutStartAutoscroll();
   };
-
-  useEffect(() => {
-    const currentIndex = getCurrentIndex();
-    if (currentIndex !== activeIndex && !pauseSync) {
-      devTools.update(INDEX_KEY, { index: currentIndex });
-    }
-  }, [time]);
-
-  const cache = new CellMeasurerCache({
-    fixedWidth: true,
-    keyMapper: (index: number) => filteredList[index],
-  });
-  const _list = React.useRef();
-
-  const showDetails = (log: any) => {
-    clearTimeout(timeOut);
-    showModal(<ErrorDetailsModal errorId={log.errorId} />, { right: true, onClose: removePause });
-    devTools.update(INDEX_KEY, { index: filteredList.indexOf(log) });
-    setPauseSync(true);
-  };
-
-  const _rowRenderer = ({ index, key, parent, style }: any) => {
-    const item = filteredList[index];
-
-    return (
-      // @ts-ignore
-      <CellMeasurer cache={cache} columnIndex={0} key={key} rowIndex={index} parent={parent}>
-        {({ measure }: any) => (
-          <ConsoleRow
-            style={style}
-            log={item}
-            jump={jump}
-            iconProps={getIconProps(item.level)}
-            renderWithNL={renderWithNL}
-            onClick={() => showDetails(item)}
-            recalcHeight={() => {
-              measure();
-              (_list as any).current.recomputeRowHeights(index);
-            }}
-          />
-        )}
-      </CellMeasurer>
-    );
-  };
-
-  React.useMemo(() => {
-    const filterRE = getRE(filter, 'i');
-    let list = logs;
-
-    list = list.filter(
-      ({ value, level }: any) =>
-        (!!filter ? filterRE.test(value) : true) &&
-        (activeTab === ALL || activeTab === LEVEL_TAB[level])
-    );
-    setFilteredList(list);
-  }, [logs, filter, activeTab]);
 
   useEffect(() => {
     if (_list.current) {
       // @ts-ignore
-      _list.current.scrollToRow(activeIndex);
+      _list.current.scrollToIndex(activeIndex);
     }
   }, [activeIndex]);
 
+  const showDetails = (log: any) => {
+    setIsDetailsModalActive(true);
+    showModal(<ErrorDetailsModal errorId={log.errorId} />, {
+      right: true,
+      width: 1200,
+      onClose: () => {
+        setIsDetailsModalActive(false);
+        timeoutStartAutoscroll();
+      },
+    });
+    devTools.update(INDEX_KEY, { index: filteredList.indexOf(log) });
+    stopAutoscroll();
+  };
+
   return (
-    <BottomBlock
-      style={{ height: 300 + additionalHeight + 'px' }}
-      onMouseEnter={() => setPauseSync(true)}
-      onMouseLeave={onMouseLeave}
-    >
+    <BottomBlock style={{ height: '100%' }} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       {/* @ts-ignore */}
       <BottomBlock.Header>
         <div className="flex items-center">
           <span className="font-semibold color-gray-medium mr-4">Console</span>
           <Tabs tabs={TABS} active={activeTab} onClick={onTabClick} border={false} />
         </div>
-        <Input
-          className="input-small h-8"
-          placeholder="Filter by keyword"
-          icon="search"
-          iconPosition="left"
-          name="filter"
-          height={28}
-          onChange={onFilterChange}
-          value={filter}
-        />
+        <div className={'flex items-center gap-2'}>
+          <TabSelector />
+          <Input
+            className="rounded-lg"
+            placeholder="Filter by keyword"
+            name="filter"
+            onChange={onFilterChange}
+            value={filter}
+            size='small'
+            prefix={<SearchOutlined className='text-neutral-400' />}
+          />
+        </div>
         {/* @ts-ignore */}
       </BottomBlock.Header>
       {/* @ts-ignore */}
       <BottomBlock.Content className="overflow-y-auto">
         <NoContent
           title={
-            <div className="capitalize flex items-center mt-16">
-              <Icon name="info-circle" className="mr-2" size="18" />
+            <div className="capitalize flex items-center mt-16 gap-2">
+              <InfoCircleOutlined size={18} />
               No Data
             </div>
           }
           size="small"
           show={filteredList.length === 0}
         >
-          {/* @ts-ignore */}
-          <AutoSizer>
-            {({ height, width }: any) => (
-              // @ts-ignore
-              <List
-                ref={_list}
-                deferredMeasurementCache={cache}
-                overscanRowCount={5}
-                rowCount={Math.ceil(filteredList.length || 1)}
-                rowHeight={cache.rowHeight}
-                rowRenderer={_rowRenderer}
-                width={width}
-                height={height}
-                // scrollToIndex={activeIndex}
-                scrollToAlignment="center"
+          <VList ref={_list} itemSize={25}>
+            {filteredList.map((log) => (
+              <ConsoleRow
+                log={log}
+                jump={jump}
+                iconProps={getIconProps(log.level)}
+                renderWithNL={renderWithNL}
+                onClick={() => showDetails(log)}
+                showSingleTab={showSingleTab}
+                getTabNum={getTabNum}
               />
-            )}
-          </AutoSizer>
+            ))}
+          </VList>
         </NoContent>
         {/* @ts-ignore */}
       </BottomBlock.Content>
@@ -244,19 +235,4 @@ function ConsolePanel(props: Props) {
   );
 }
 
-export default connectPlayer((state: any) => {
-  const logs = state.logList;
-  const exceptions = state.exceptionsList; // TODO merge
-  const logExceptions = exceptions.map(({ time, errorId, name, projectId }: any) =>
-    Log({
-      level: LEVEL.ERROR,
-      value: name,
-      time,
-      errorId,
-    })
-  );
-  return {
-    time: state.time,
-    logs: logs.concat(logExceptions),
-  };
-})(ConsolePanel);
+export default observer(ConsolePanel);

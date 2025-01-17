@@ -1,45 +1,53 @@
 import React from 'react';
-import { Button } from 'UI';
+import { Button } from 'antd';
+import { useModal } from 'App/components/Modal';
 import SessionSearchField from 'Shared/SessionSearchField';
-// import { fetchFilterSearch } from 'Duck/search';
-import { connect } from 'react-redux';
-import { edit as editFilter, addFilterByKeyAndValue, clearSearch, fetchFilterSearch } from 'Duck/liveSearch';
-// import { clearSearch } from 'Duck/search';
+import { MODULES } from 'Components/Client/Modules';
 
-interface Props {
-    appliedFilter: any;
-    fetchFilterSearch: any;
-    addFilterByKeyAndValue: any;
-    clearSearch: any;
-}
-function AssistSearchField(props: Props) {
-    const hasEvents = props.appliedFilter.filters.filter((i: any) => i.isEvent).size > 0;
-    const hasFilters = props.appliedFilter.filters.filter((i: any) => !i.isEvent).size > 0;
-    return (
-        <div className="flex items-center">
-            <div style={{ width: '60%', marginRight: '10px' }}>
-                <SessionSearchField fetchFilterSearch={props.fetchFilterSearch} addFilterByKeyAndValue={props.addFilterByKeyAndValue} />
-            </div>
-            <Button
-                variant="text-primary"
-                className="ml-auto font-medium"
-                disabled={!hasFilters && !hasEvents}
-                onClick={() => props.clearSearch()}
-            >
-                Clear Search
-            </Button>
-        </div>
-    );
+import AssistStats from '../../AssistStats';
+import Recordings from '../RecordingsList/Recordings';
+import { useStore } from 'App/mstore';
+import { observer } from 'mobx-react-lite';
+
+function AssistSearchField() {
+  const { searchStoreLive, userStore } = useStore();
+  const modules = userStore.account.settings?.modules ?? [];
+  const isEnterprise = userStore.isEnterprise
+  const hasEvents =
+    searchStoreLive.instance.filters.filter((i: any) => i.isEvent).length > 0;
+  const hasFilters =
+    searchStoreLive.instance.filters.filter((i: any) => !i.isEvent).length > 0;
+  const { showModal } = useModal();
+
+  const showStats = () => {
+    showModal(<AssistStats />, { right: true, width: 960 });
+  };
+  const showRecords = () => {
+    showModal(<Recordings />, { right: true, width: 960 });
+  };
+  return (
+    <div className="flex items-center w-full gap-2">
+      <div style={{ width: '60%' }}>
+        <SessionSearchField />
+      </div>
+      {isEnterprise && modules.includes(MODULES.OFFLINE_RECORDINGS)
+        ? <Button type="primary" ghost onClick={showRecords}>Training Videos</Button> : null
+      }
+      {isEnterprise && (
+        <Button type="primary" ghost onClick={showStats}
+                disabled={modules.includes(MODULES.ASSIST_STATS) || modules.includes(MODULES.ASSIST)}>
+          Co-Browsing Reports</Button>
+      )}
+      <Button
+        type="link"
+        className="ml-auto font-medium"
+        disabled={!hasFilters && !hasEvents}
+        onClick={() => searchStoreLive.clearSearch()}
+      >
+        Clear Search
+      </Button>
+    </div>
+  );
 }
 
-export default connect(
-    (state: any) => ({
-        appliedFilter: state.getIn(['liveSearch', 'instance']),
-    }),
-    {
-        fetchFilterSearch,
-        editFilter,
-        addFilterByKeyAndValue,
-        clearSearch,
-    }
-)(AssistSearchField);
+export default observer(AssistSearchField);

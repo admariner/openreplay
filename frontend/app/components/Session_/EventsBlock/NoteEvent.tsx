@@ -1,6 +1,8 @@
+import { useModal } from 'Components/Modal';
+import CreateNote from 'Components/Session_/Player/Controls/components/CreateNote';
 import React from 'react';
 import { Icon } from 'UI';
-import { tagProps, iTag, Note } from 'App/services/NotesService';
+import { tagProps, Note } from 'App/services/NotesService';
 import { formatTimeOrDate } from 'App/date';
 import { useStore } from 'App/mstore';
 import { observer } from 'mobx-react-lite';
@@ -9,43 +11,47 @@ import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { session } from 'App/routes';
 import { confirm } from 'UI';
-import { filterOutNote as filterOutTimelineNote } from 'Player';
-import { TeamBadge } from 'Shared/SessionListContainer/components/Notes';
+import { TeamBadge } from 'Shared/SessionsTabOverview/components/Notes';
+import { Tag } from 'antd'
 
 interface Props {
   note: Note;
   noEdit: boolean;
-  userEmail: string;
   filterOutNote: (id: number) => void;
-  onEdit: (noteTooltipObj: Record<string, any>) => void;
 }
 
 function NoteEvent(props: Props) {
   const { settingsStore, notesStore } = useStore();
   const { timezone } = settingsStore.sessionSettings;
+  const { showModal, hideModal } = useModal();
 
-  console.log(props.noEdit);
   const onEdit = () => {
-    props.onEdit({
-      isVisible: true,
-      isEdit: true,
-      time: props.note.timestamp,
-      note: {
-        timestamp: props.note.timestamp,
-        tag: props.note.tag,
-        isPublic: props.note.isPublic,
-        message: props.note.message,
-        sessionId: props.note.sessionId,
-        noteId: props.note.noteId,
-      },
-    });
+    showModal(
+      <CreateNote
+        hideModal={hideModal}
+        isEdit
+        time={props.note.timestamp}
+        editNote={{
+          timestamp: props.note.timestamp,
+          tag: props.note.tag,
+          isPublic: props.note.isPublic,
+          message: props.note.message,
+          noteId: props.note.noteId.toString(),
+        }}
+      />,
+      { right: true, width: 380 }
+    );
   };
 
   const onCopy = () => {
     copy(
       `${window.location.origin}/${window.location.pathname.split('/')[1]}${session(
         props.note.sessionId
-      )}${props.note.timestamp > 0 ? `?jumpto=${props.note.timestamp}&note=${props.note.noteId}` : `?note=${props.note.noteId}`}`
+      )}${
+        props.note.timestamp > 0
+          ? `?jumpto=${props.note.timestamp}&note=${props.note.noteId}`
+          : `?note=${props.note.noteId}`
+      }`
     );
     toast.success('Note URL copied to clipboard');
   };
@@ -60,7 +66,6 @@ function NoteEvent(props: Props) {
     ) {
       notesStore.deleteNote(props.note.noteId).then((r) => {
         props.filterOutNote(props.note.noteId);
-        filterOutTimelineNote(props.note.noteId);
         toast.success('Note deleted');
       });
     }
@@ -71,10 +76,7 @@ function NoteEvent(props: Props) {
     { icon: 'trash', text: 'Delete', onClick: onDelete },
   ];
   return (
-    <div
-      className="flex items-start flex-col p-2 border rounded"
-      style={{ background: '#FFFEF5' }}
-    >
+    <div className="flex items-start flex-col p-2 border rounded ps-4" style={{ background: '#FFFEF5' }}>
       <div className="flex items-center w-full relative">
         <div className="p-3 bg-gray-light rounded-full">
           <Icon name="quotes" color="main" />
@@ -89,9 +91,9 @@ function NoteEvent(props: Props) {
               whiteSpace: 'nowrap',
             }}
           >
-            {props.userEmail}, {props.userEmail}
+            {props.note.userName}
           </div>
-          <div className="text-disabled-text text-sm">
+          <div className="text-disabled-text text-xs">
             {formatTimeOrDate(props.note.createdAt as unknown as number, timezone)}
           </div>
         </div>
@@ -106,20 +108,11 @@ function NoteEvent(props: Props) {
         {props.note.message}
       </div>
       <div>
-        <div className="flex items-center gap-2 flex-wrap w-full">
+        <div className="flex items-center flex-wrap w-full">
           {props.note.tag ? (
-            <div
-              key={props.note.tag}
-              style={{
-                // @ts-ignore
-                background: tagProps[props.note.tag],
-                userSelect: 'none',
-                padding: '1px 6px',
-              }}
-              className="rounded-full text-white text-xs select-none w-fit"
-            >
+            <Tag color={tagProps[props.note.tag]} bordered={false} className='rounded-lg'>
               {props.note.tag}
-            </div>
+            </Tag>
           ) : null}
           {!props.note.isPublic ? null : <TeamBadge />}
         </div>

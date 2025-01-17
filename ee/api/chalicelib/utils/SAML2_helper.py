@@ -1,28 +1,40 @@
+import logging
+import urllib
 from http import cookies
 from os import environ
 from urllib.parse import urlparse
 
 from decouple import config
-from fastapi import Request
-from onelogin.saml2.auth import OneLogin_Saml2_Auth
+from fastapi import Request, HTTPException
 from starlette.datastructures import FormData
 
+if config("ENABLE_SSO", cast=bool, default=True):
+    from onelogin.saml2.auth import OneLogin_Saml2_Auth
+
+if config("LOCAL_DEV", default=False, cast=bool):
+    API_PREFIX = ""
+else:
+    API_PREFIX = "/api"
+
 SAML2 = {
-    "strict": True,
-    "debug": True,
+    "strict": config("saml_strict", cast=bool, default=True),
+    "debug": config("saml_debug", cast=bool, default=True),
     "sp": {
-        "entityId": config("SITE_URL") + "/api/sso/saml2/metadata/",
+        "entityId": config("SITE_URL") + API_PREFIX + "/sso/saml2/metadata/",
         "assertionConsumerService": {
-            "url": config("SITE_URL") + "/api/sso/saml2/acs/",
+            "url": config("SITE_URL") + API_PREFIX + "/sso/saml2/acs/",
             "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
         },
         "singleLogoutService": {
-            "url": config("SITE_URL") + "/api/sso/saml2/sls/",
+            "url": config("SITE_URL") + API_PREFIX + "/sso/saml2/sls/",
             "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
         },
         "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
-        "x509cert": "",
-        "privateKey": ""
+        "x509cert": config("sp_crt", default=""),
+        "privateKey": config("sp_key", default=""),
+    },
+    "security": {
+        "requestedAuthnContext": False
     },
     "idp": None
 }
@@ -60,19 +72,20 @@ if SAML2["idp"] is None:
             }
 
 if idp is None:
-    print("No SAML2 IdP configuration found")
+    logging.info("No SAML2 IdP configuration found")
 else:
     SAML2["idp"] = idp
 
 
 def init_saml_auth(req):
-    # auth = OneLogin_Saml2_Auth(req, custom_base_path=environ['SAML_PATH'])
     if idp is None:
         raise Exception("No SAML2 config provided")
     return OneLogin_Saml2_Auth(req, old_settings=SAML2)
 
 
 async def prepare_request(request: Request):
+    if not is_saml2_available():
+        raise HTTPException(status_code=401, detail="SSO configuration not available.")
     request.args = dict(request.query_params).copy() if request.query_params else {}
     form: FormData = await request.form()
     request.form = dict(form)
@@ -86,27 +99,31 @@ async def prepare_request(request: Request):
         for key, morsel in cookie.items():
             extracted_cookies[key] = morsel.value
         if "session" not in extracted_cookies:
-            print("!!! session not found in extracted_cookies")
-            print(extracted_cookies)
+            logging.info("!!! session not found in extracted_cookies")
+            logging.info(extracted_cookies)
         session = extracted_cookies.get("session", {})
     else:
         session = {}
     # If server is behind proxys or balancers use the HTTP_X_FORWARDED fields
     headers = request.headers
     proto = headers.get('x-forwarded-proto', 'http')
-    if headers.get('x-forwarded-proto') is not None:
-        print(f"x-forwarded-proto: {proto}")
     url_data = urlparse('%s://%s' % (proto, headers['host']))
     path = request.url.path
+    site_url = urlparse(config("SITE_URL"))
+    # to support custom port without changing IDP config
+    host_suffix = ""
+    if site_url.port is not None and request.url.port is None:
+        host_suffix = f":{site_url.port}"
+
     # add / to /acs
     if not path.endswith("/"):
         path = path + '/'
-    if not path.startswith("/api"):
-        path = "/api" + path
+    if len(API_PREFIX) > 0 and not path.startswith(API_PREFIX):
+        path = API_PREFIX + path
 
     return {
         'https': 'on' if proto == 'https' else 'off',
-        'http_host': request.headers['host'],
+        'http_host': request.headers['host'] + host_suffix,
         'server_port': url_data.port,
         'script_name': path,
         'get_data': request.args.copy(),
@@ -127,8 +144,19 @@ def get_saml2_provider():
         config("idp_name", default="saml2")) > 0 else None
 
 
-def get_landing_URL(jwt):
-    return config("SITE_URL") + config("sso_landing", default="/login?jwt=%s") % jwt
+def get_landing_URL(query_params: dict = None, redirect_to_link2=False):
+    if query_params is not None and len(query_params.keys()) > 0:
+        query_params = "?" + urllib.parse.urlencode(query_params)
+    else:
+        query_params = ""
+
+    if redirect_to_link2:
+        if len(config("sso_landing_override", default="")) == 0:
+            logging.warning("SSO trying to redirect to custom URL, but sso_landing_override env var is empty")
+        else:
+            return config("sso_landing_override") + query_params
+
+    return config("SITE_URL") + config("sso_landing", default="/login") + query_params
 
 
 environ["hastSAML2"] = str(is_saml2_available())

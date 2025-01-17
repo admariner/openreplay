@@ -85,6 +85,8 @@ affinity: {}
 
 ## Child charts
 redis:
+  image:
+    tag: 7.2
   enabled: true
   fullnameOverride: redis
   usePassword: false
@@ -102,8 +104,9 @@ redis:
 postgresql:
   # postgresqlPassword: asayerPostgres
   fullnameOverride: postgresql
+  postgresqlSharedPreloadLibraries: "pgaudit,pg_stat_statements"
   image:
-    tag: 14.5.0
+    tag: 16.4.0
   resources:
     limits:
       cpu: 1
@@ -117,6 +120,8 @@ minio:
   #  minio:
   #    accessKey: "{{ minio_access_key }}"
   #    secretKey: "{{ minio_secret_key }}"
+  image:
+    tag: 2023.11.20
   fullnameOverride: minio
   enabled: true
   resources:
@@ -126,18 +131,42 @@ minio:
     requests:
       cpu: 100m
       memory: 128Mi
+  persistence:
+    enabled: true
+    size: 5Gi
 
 kafka:
   image:
-    tag: 2.8.1
+    tag: 3.3
   fullnameOverride: kafka
   enabled: false
+  replicaCount: 2
+  persistence:
+    enabled: true
+    size: 100Gi
+  # resources:
+  #   limit:
+  #     memory: 4Gi
+  #   requests:
+  #     memory: 4Gi
+  #     cpu: 2
+  # metrics:
+  #   jmx:
+  #     enabled: true
+  #   kafka:
+  #     enabled: true
+  #   serviceMonitor:
+  #     enabled: false
+  #     labels:
+  #       release: observability
+  # prometheusRule:
+  #   enabled: false
 
 
 # Enterprise dbs
 clickhouse:
   image:
-    tag: "22.2.2.1"
+    tag: "24.9-alpine"
   enabled: false
 
 postgreql:

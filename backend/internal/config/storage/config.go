@@ -3,15 +3,17 @@ package storage
 import (
 	"openreplay/backend/internal/config/common"
 	"openreplay/backend/internal/config/configurator"
+	"openreplay/backend/internal/config/objectstorage"
+	"openreplay/backend/pkg/logger"
 	"time"
 )
 
 type Config struct {
 	common.Config
-	S3Region             string        `env:"AWS_REGION_WEB,required"`
-	S3Bucket             string        `env:"S3_BUCKET_WEB,required"`
+	objectstorage.ObjectsConfig
 	FSDir                string        `env:"FS_DIR,required"`
 	FileSplitSize        int           `env:"FILE_SPLIT_SIZE,required"`
+	FileSplitTime        time.Duration `env:"FILE_SPLIT_TIME,default=15s"`
 	RetryTimeout         time.Duration `env:"RETRY_TIMEOUT,default=2m"`
 	GroupStorage         string        `env:"GROUP_STORAGE,required"`
 	TopicTrigger         string        `env:"TOPIC_TRIGGER,required"`
@@ -21,10 +23,13 @@ type Config struct {
 	ProducerCloseTimeout int           `env:"PRODUCER_CLOSE_TIMEOUT,default=15000"`
 	UseFailover          bool          `env:"USE_FAILOVER,default=false"`
 	MaxFileSize          int64         `env:"MAX_FILE_SIZE,default=524288000"`
+	UseSort              bool          `env:"USE_SESSION_SORT,default=true"`
+	UseProfiler          bool          `env:"PROFILER_ENABLED,default=false"`
+	CompressionAlgo      string        `env:"COMPRESSION_ALGO,default=zstd"` // none, gzip, brotli, zstd
 }
 
-func New() *Config {
+func New(log logger.Logger) *Config {
 	cfg := &Config{}
-	configurator.Process(cfg)
+	configurator.Process(log, cfg)
 	return cfg
 }

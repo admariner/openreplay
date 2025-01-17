@@ -50,13 +50,16 @@ spec:
               value: "{{ .Values.global.s3.region }}"
             - name: QW_S3_ENDPOINT
               value: '{{ .Values.global.s3.endpoint }}'
-              {{- end}}
             - name: AWS_ACCESS_KEY_ID
               value: {{ .Values.global.s3.accessKey }}
             - name: AWS_SECRET_ACCESS_KEY
               value: {{ .Values.global.s3.secretKey }}
             - name: QW_DATA_DIR
               value: /opt/openreplay/
+            {{- range $key, $val := .Values.global.env }}
+            - name: {{ $key }}
+              value: '{{ $val }}'
+            {{- end }}
           ports:
             {{- range $key, $val := .Values.service.ports }}
             - name: {{ $key }}

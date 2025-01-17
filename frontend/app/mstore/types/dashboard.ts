@@ -1,4 +1,4 @@
-import { makeAutoObservable, observable, action, runInAction } from "mobx"
+import { makeAutoObservable, runInAction } from "mobx"
 import Widget from "./widget"
 import { dashboardService  } from "App/services"
 import { toast } from 'react-toastify';
@@ -6,7 +6,8 @@ import { DateTime } from 'luxon';
 
 export default class Dashboard {
     public static get ID_KEY():string { return "dashboardId" }
-    dashboardId: any = undefined
+    dashboardId?: string = undefined
+    key: string = ""
     name: string = "Untitled Dashboard"
     description: string = ""
     isPublic: boolean = true
@@ -16,11 +17,20 @@ export default class Dashboard {
     currentWidget: Widget = new Widget()
     config: any = {}
     createdAt: number = new Date().getTime()
+    owner: string = ""
 
     constructor() {
         makeAutoObservable(this)
 
         this.validate();
+    }
+
+    get updatedAt() {
+        return this.createdAt as unknown as DateTime
+    }
+
+    get updatedBy() {
+        return "no api"
     }
 
     update(data: any) {
@@ -30,12 +40,19 @@ export default class Dashboard {
         this.validate()
     }
 
+    updateInfo(data: any) {
+        runInAction(() => {
+            this.name = data.name || this.name
+            this.description = data.description || this.description
+            this.isPublic = data.isPublic
+        })
+    }
+
     toJson() {
         return {
             dashboardId: this.dashboardId,
             name: this.name,
             isPublic: this.isPublic,
-            createdAt: this.createdAt,
             metrics: this.metrics,
             description: this.description,
         }
@@ -47,7 +64,9 @@ export default class Dashboard {
             this.name = json.name
             this.description = json.description
             this.isPublic = json.isPublic
+            this.key = json.dashboardId
             this.createdAt = DateTime.fromMillis(new Date(json.createdAt).getTime())
+            this.owner = json.ownerName
             if (json.widgets) {
                 const smallWidgets: any[] = json.widgets.filter(wi => wi.config.col === 1)
                 const otherWidgets: any[] = json.widgets.filter(wi => wi.config.col !== 1)

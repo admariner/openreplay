@@ -1,38 +1,39 @@
 import React from 'react';
-// @ts-ignore
-import { Duration } from 'luxon';
-import { connect } from 'react-redux';
+import { observer } from 'mobx-react-lite';
+import { useStore } from 'App/mstore';
 import stl from './styles.module.css';
 
-interface Props {
-  time: number;
-  offset: number;
-  isVisible: boolean;
-  liveTimeTravel: boolean;
-}
-
-function TimeTooltip({
-  time,
-  offset,
-  isVisible,
-  liveTimeTravel,
-}: Props) {
-  const duration = Duration.fromMillis(time).toFormat(`${liveTimeTravel ? '-' : ''}mm:ss`);
+function TimeTooltip() {
+  const { sessionStore } = useStore();
+  const timeLineTooltip = sessionStore.timeLineTooltip;
+  const { time = 0, offset = 0, isVisible, localTime, userTime } = timeLineTooltip;
   return (
     <div
       className={stl.timeTooltip}
       style={{
-        top: -30,
-        left: offset - 20,
+        top: 0,
+        left: `calc(${offset}px - 0.5rem)`,
         display: isVisible ? 'block' : 'none',
+        transform: 'translate(-50%, -110%)',
+        whiteSpace: 'nowrap',
+        textAlign: "center",
       }}
     >
-      {!time ? 'Loading' : duration}
+      {!time ? 'Loading' : time}
+      {localTime ? (
+        <>
+          <br />
+          <span className="text-gray-light">local: {localTime}</span>
+        </>
+      ) : null}
+      {userTime ? (
+        <>
+          <br />
+          <span className="text-gray-light">user: {userTime}</span>
+        </>
+      ) : null}
     </div>
   );
 }
 
-export default connect((state) => {
-  const { time = 0, offset = 0, isVisible } = state.getIn(['sessions', 'timeLineTooltip']);
-  return { time, offset, isVisible };
-})(TimeTooltip);
+export default observer(TimeTooltip);

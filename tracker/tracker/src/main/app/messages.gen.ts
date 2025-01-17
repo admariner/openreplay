@@ -2,36 +2,8 @@
 /* eslint-disable */
 
 import * as Messages from '../../common/messages.gen.js'
-export { default } from '../../common/messages.gen.js'
+export { default, Type } from '../../common/messages.gen.js'
 
-
-export function BatchMetadata(
-  version: number,
-  pageNo: number,
-  firstIndex: number,
-  timestamp: number,
-  location: string,
-): Messages.BatchMetadata {
-  return [
-    Messages.Type.BatchMetadata,
-    version,
-    pageNo,
-    firstIndex,
-    timestamp,
-    location,
-  ]
-}
-
-export function PartitionedMessage(
-  partNo: number,
-  partTotal: number,
-): Messages.PartitionedMessage {
-  return [
-    Messages.Type.PartitionedMessage,
-    partNo,
-    partTotal,
-  ]
-}
 
 export function Timestamp(
   timestamp: number,
@@ -42,13 +14,13 @@ export function Timestamp(
   ]
 }
 
-export function SetPageLocation(
+export function SetPageLocationDeprecated(
   url: string,
   referrer: string,
   navigationStart: number,
-): Messages.SetPageLocation {
+): Messages.SetPageLocationDeprecated {
   return [
-    Messages.Type.SetPageLocation,
+    Messages.Type.SetPageLocationDeprecated,
     url,
     referrer,
     navigationStart,
@@ -232,6 +204,29 @@ export function MouseMove(
   ]
 }
 
+export function NetworkRequestDeprecated(
+  type: string,
+  method: string,
+  url: string,
+  request: string,
+  response: string,
+  status: number,
+  timestamp: number,
+  duration: number,
+): Messages.NetworkRequestDeprecated {
+  return [
+    Messages.Type.NetworkRequestDeprecated,
+    type,
+    method,
+    url,
+    request,
+    response,
+    status,
+    timestamp,
+    duration,
+  ]
+}
+
 export function ConsoleLog(
   level: string,
   value: string,
@@ -281,25 +276,12 @@ export function PageRenderTiming(
   ]
 }
 
-export function JSExceptionDeprecated(
-  name: string,
-  message: string,
-  payload: string,
-): Messages.JSExceptionDeprecated {
-  return [
-    Messages.Type.JSExceptionDeprecated,
-    name,
-    message,
-    payload,
-  ]
-}
-
-export function RawCustomEvent(
+export function CustomEvent(
   name: string,
   payload: string,
-): Messages.RawCustomEvent {
+): Messages.CustomEvent {
   return [
-    Messages.Type.RawCustomEvent,
+    Messages.Type.CustomEvent,
     name,
     payload,
   ]
@@ -414,13 +396,13 @@ export function StateAction(
   ]
 }
 
-export function Redux(
+export function ReduxDeprecated(
   action: string,
   state: string,
   duration: number,
-): Messages.Redux {
+): Messages.ReduxDeprecated {
   return [
-    Messages.Type.Redux,
+    Messages.Type.ReduxDeprecated,
     action,
     state,
     duration,
@@ -462,18 +444,20 @@ export function NgRx(
   ]
 }
 
-export function GraphQL(
+export function GraphQLDeprecated(
   operationKind: string,
   operationName: string,
   variables: string,
   response: string,
-): Messages.GraphQL {
+  duration: number,
+): Messages.GraphQLDeprecated {
   return [
-    Messages.Type.GraphQL,
+    Messages.Type.GraphQLDeprecated,
     operationKind,
     operationName,
     variables,
     response,
+    duration,
   ]
 }
 
@@ -492,7 +476,55 @@ export function PerformanceTrack(
   ]
 }
 
-export function ResourceTiming(
+export function StringDictDeprecated(
+  key: number,
+  value: string,
+): Messages.StringDictDeprecated {
+  return [
+    Messages.Type.StringDictDeprecated,
+    key,
+    value,
+  ]
+}
+
+export function SetNodeAttributeDictDeprecated(
+  id: number,
+  nameKey: number,
+  valueKey: number,
+): Messages.SetNodeAttributeDictDeprecated {
+  return [
+    Messages.Type.SetNodeAttributeDictDeprecated,
+    id,
+    nameKey,
+    valueKey,
+  ]
+}
+
+export function StringDict(
+  key: string,
+  value: string,
+): Messages.StringDict {
+  return [
+    Messages.Type.StringDict,
+    key,
+    value,
+  ]
+}
+
+export function SetNodeAttributeDict(
+  id: number,
+  name: string,
+  value: string,
+): Messages.SetNodeAttributeDict {
+  return [
+    Messages.Type.SetNodeAttributeDict,
+    id,
+    name,
+    value,
+  ]
+}
+
+export function ResourceTimingDeprecated(
   timestamp: number,
   duration: number,
   ttfb: number,
@@ -501,9 +533,9 @@ export function ResourceTiming(
   decodedBodySize: number,
   url: string,
   initiator: string,
-): Messages.ResourceTiming {
+): Messages.ResourceTimingDeprecated {
   return [
-    Messages.Type.ResourceTiming,
+    Messages.Type.ResourceTimingDeprecated,
     timestamp,
     duration,
     ttfb,
@@ -650,9 +682,28 @@ export function MouseClick(
   hesitationTime: number,
   label: string,
   selector: string,
+  normalizedX: number,
+  normalizedY: number,
 ): Messages.MouseClick {
   return [
     Messages.Type.MouseClick,
+    id,
+    hesitationTime,
+    label,
+    selector,
+    normalizedX,
+    normalizedY,
+  ]
+}
+
+export function MouseClickDeprecated(
+  id: number,
+  hesitationTime: number,
+  label: string,
+  selector: string,
+): Messages.MouseClickDeprecated {
+  return [
+    Messages.Type.MouseClickDeprecated,
     id,
     hesitationTime,
     label,
@@ -732,17 +783,6 @@ export function AdoptedSSRemoveOwner(
   ]
 }
 
-export function Zustand(
-  mutation: string,
-  state: string,
-): Messages.Zustand {
-  return [
-    Messages.Type.Zustand,
-    mutation,
-    state,
-  ]
-}
-
 export function JSException(
   name: string,
   message: string,
@@ -755,6 +795,262 @@ export function JSException(
     message,
     payload,
     metadata,
+  ]
+}
+
+export function Zustand(
+  mutation: string,
+  state: string,
+): Messages.Zustand {
+  return [
+    Messages.Type.Zustand,
+    mutation,
+    state,
+  ]
+}
+
+export function BatchMetadata(
+  version: number,
+  pageNo: number,
+  firstIndex: number,
+  timestamp: number,
+  location: string,
+): Messages.BatchMetadata {
+  return [
+    Messages.Type.BatchMetadata,
+    version,
+    pageNo,
+    firstIndex,
+    timestamp,
+    location,
+  ]
+}
+
+export function PartitionedMessage(
+  partNo: number,
+  partTotal: number,
+): Messages.PartitionedMessage {
+  return [
+    Messages.Type.PartitionedMessage,
+    partNo,
+    partTotal,
+  ]
+}
+
+export function NetworkRequest(
+  type: string,
+  method: string,
+  url: string,
+  request: string,
+  response: string,
+  status: number,
+  timestamp: number,
+  duration: number,
+  transferredBodySize: number,
+): Messages.NetworkRequest {
+  return [
+    Messages.Type.NetworkRequest,
+    type,
+    method,
+    url,
+    request,
+    response,
+    status,
+    timestamp,
+    duration,
+    transferredBodySize,
+  ]
+}
+
+export function WSChannel(
+  chType: string,
+  channelName: string,
+  data: string,
+  timestamp: number,
+  dir: string,
+  messageType: string,
+): Messages.WSChannel {
+  return [
+    Messages.Type.WSChannel,
+    chType,
+    channelName,
+    data,
+    timestamp,
+    dir,
+    messageType,
+  ]
+}
+
+export function InputChange(
+  id: number,
+  value: string,
+  valueMasked: boolean,
+  label: string,
+  hesitationTime: number,
+  inputDuration: number,
+): Messages.InputChange {
+  return [
+    Messages.Type.InputChange,
+    id,
+    value,
+    valueMasked,
+    label,
+    hesitationTime,
+    inputDuration,
+  ]
+}
+
+export function SelectionChange(
+  selectionStart: number,
+  selectionEnd: number,
+  selection: string,
+): Messages.SelectionChange {
+  return [
+    Messages.Type.SelectionChange,
+    selectionStart,
+    selectionEnd,
+    selection,
+  ]
+}
+
+export function MouseThrashing(
+  timestamp: number,
+): Messages.MouseThrashing {
+  return [
+    Messages.Type.MouseThrashing,
+    timestamp,
+  ]
+}
+
+export function UnbindNodes(
+  totalRemovedPercent: number,
+): Messages.UnbindNodes {
+  return [
+    Messages.Type.UnbindNodes,
+    totalRemovedPercent,
+  ]
+}
+
+export function ResourceTiming(
+  timestamp: number,
+  duration: number,
+  ttfb: number,
+  headerSize: number,
+  encodedBodySize: number,
+  decodedBodySize: number,
+  url: string,
+  initiator: string,
+  transferredSize: number,
+  cached: boolean,
+): Messages.ResourceTiming {
+  return [
+    Messages.Type.ResourceTiming,
+    timestamp,
+    duration,
+    ttfb,
+    headerSize,
+    encodedBodySize,
+    decodedBodySize,
+    url,
+    initiator,
+    transferredSize,
+    cached,
+  ]
+}
+
+export function TabChange(
+  tabId: string,
+): Messages.TabChange {
+  return [
+    Messages.Type.TabChange,
+    tabId,
+  ]
+}
+
+export function TabData(
+  tabId: string,
+): Messages.TabData {
+  return [
+    Messages.Type.TabData,
+    tabId,
+  ]
+}
+
+export function CanvasNode(
+  nodeId: string,
+  timestamp: number,
+): Messages.CanvasNode {
+  return [
+    Messages.Type.CanvasNode,
+    nodeId,
+    timestamp,
+  ]
+}
+
+export function TagTrigger(
+  tagId: number,
+): Messages.TagTrigger {
+  return [
+    Messages.Type.TagTrigger,
+    tagId,
+  ]
+}
+
+export function Redux(
+  action: string,
+  state: string,
+  duration: number,
+  actionTime: number,
+): Messages.Redux {
+  return [
+    Messages.Type.Redux,
+    action,
+    state,
+    duration,
+    actionTime,
+  ]
+}
+
+export function SetPageLocation(
+  url: string,
+  referrer: string,
+  navigationStart: number,
+  documentTitle: string,
+): Messages.SetPageLocation {
+  return [
+    Messages.Type.SetPageLocation,
+    url,
+    referrer,
+    navigationStart,
+    documentTitle,
+  ]
+}
+
+export function GraphQL(
+  operationKind: string,
+  operationName: string,
+  variables: string,
+  response: string,
+  duration: number,
+): Messages.GraphQL {
+  return [
+    Messages.Type.GraphQL,
+    operationKind,
+    operationName,
+    variables,
+    response,
+    duration,
+  ]
+}
+
+export function WebVitals(
+  name: string,
+  value: string,
+): Messages.WebVitals {
+  return [
+    Messages.Type.WebVitals,
+    name,
+    value,
   ]
 }
 

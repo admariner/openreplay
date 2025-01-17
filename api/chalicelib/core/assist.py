@@ -4,7 +4,7 @@ from os.path import exists as path_exists, getsize
 import jwt
 import requests
 from decouple import config
-from starlette.exceptions import HTTPException
+from fastapi import HTTPException, status
 
 import schemas
 from chalicelib.core import projects
@@ -12,25 +12,21 @@ from chalicelib.utils.TimeUTC import TimeUTC
 
 ASSIST_KEY = config("ASSIST_KEY")
 ASSIST_URL = config("ASSIST_URL") % ASSIST_KEY
-SESSION_PROJECTION_COLS = """s.project_id,
-                           s.session_id::text AS session_id,
-                           s.user_uuid,
-                           s.user_id,
-                           s.user_agent,
-                           s.user_os,
-                           s.user_browser,
-                           s.user_device,
-                           s.user_device_type,
-                           s.user_country,
-                           s.start_ts,
-                           s.user_anonymous_id,
-                           s.platform
-                           """
 
 
 def get_live_sessions_ws_user_id(project_id, user_id):
     data = {
         "filter": {"userId": user_id} if user_id else {}
+    }
+    return __get_live_sessions_ws(project_id=project_id, data=data)
+
+
+def get_live_sessions_ws_test_id(project_id, test_id):
+    data = {
+        "filter": {
+            'uxtId': test_id,
+            'operator': 'is'
+        }
     }
     return __get_live_sessions_ws(project_id=project_id, data=data)
 
@@ -42,11 +38,11 @@ def get_live_sessions_ws(project_id, body: schemas.LiveSessionsSearchPayloadSche
         "sort": {"key": body.sort, "order": body.order}
     }
     for f in body.filters:
-        if f.type == schemas.LiveFilterType.metadata:
+        if f.type == schemas.LiveFilterType.METADATA:
             data["filter"][f.source] = {"values": f.value, "operator": f.operator}
 
         else:
-            data["filter"][f.type.value] = {"values": f.value, "operator": f.operator}
+            data["filter"][f.type] = {"values": f.value, "operator": f.operator}
     return __get_live_sessions_ws(project_id=project_id, data=data)
 
 
@@ -56,7 +52,7 @@ def __get_live_sessions_ws(project_id, data):
         results = requests.post(ASSIST_URL + config("assist") + f"/{project_key}",
                                 json=data, timeout=config("assistTimeout", cast=int, default=5))
         if results.status_code != 200:
-            print(f"!! issue with the peer-server code:{results.status_code}")
+            print(f"!! issue with the peer-server code:{results.status_code} for __get_live_sessions_ws")
             print(results.text)
             return {"total": 0, "sessions": []}
         live_peers = results.json().get("data", [])
@@ -96,7 +92,7 @@ def __get_agent_token(project_id, project_key, session_id):
             "aud": f"openreplay:agent"
         },
         key=config("ASSIST_JWT_SECRET"),
-        algorithm=config("jwt_algorithm")
+        algorithm=config("JWT_ALGORITHM")
     )
 
 
@@ -106,7 +102,7 @@ def get_live_session_by_id(project_id, session_id):
         results = requests.get(ASSIST_URL + config("assist") + f"/{project_key}/{session_id}",
                                timeout=config("assistTimeout", cast=int, default=5))
         if results.status_code != 200:
-            print(f"!! issue with the peer-server code:{results.status_code}")
+            print(f"!! issue with the peer-server code:{results.status_code} for get_live_session_by_id")
             print(results.text)
             return None
         results = results.json().get("data")
@@ -136,7 +132,7 @@ def is_live(project_id, session_id, project_key=None):
         results = requests.get(ASSIST_URL + config("assistList") + f"/{project_key}/{session_id}",
                                timeout=config("assistTimeout", cast=int, default=5))
         if results.status_code != 200:
-            print(f"!! issue with the peer-server code:{results.status_code}")
+            print(f"!! issue with the peer-server code:{results.status_code} for is_live")
             print(results.text)
             return False
         results = results.json().get("data")
@@ -165,7 +161,7 @@ def autocomplete(project_id, q: str, key: str = None):
             ASSIST_URL + config("assistList") + f"/{project_key}/autocomplete",
             params=params, timeout=config("assistTimeout", cast=int, default=5))
         if results.status_code != 200:
-            print(f"!! issue with the peer-server code:{results.status_code}")
+            print(f"!! issue with the peer-server code:{results.status_code} for autocomplete")
             print(results.text)
             return {"errors": [f"Something went wrong wile calling assist:{results.text}"]}
         results = results.json().get("data", [])
@@ -181,21 +177,19 @@ def autocomplete(project_id, q: str, key: str = None):
         except:
             print("couldn't get response")
         return {"errors": ["Something went wrong wile calling assist"]}
+    for r in results:
+        r["type"] = __change_keys(r["type"])
     return {"data": results}
-
-
-def get_ice_servers():
-    return config("iceServers") if config("iceServers", default=None) is not None \
-                                   and len(config("iceServers")) > 0 else None
 
 
 def __get_efs_path():
     efs_path = config("FS_DIR")
     if not path_exists(efs_path):
-        raise HTTPException(400, f"EFS not found in path: {efs_path}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"EFS not found in path: {efs_path}")
 
     if not access(efs_path, R_OK):
-        raise HTTPException(400, f"EFS found under: {efs_path}; but it is not readable, please check permissions")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"EFS found under: {efs_path}; but it is not readable, please check permissions")
     return efs_path
 
 
@@ -209,11 +203,12 @@ def get_raw_mob_by_id(project_id, session_id):
     path_to_file = efs_path + "/" + __get_mob_path(project_id=project_id, session_id=session_id)
     if path_exists(path_to_file):
         if not access(path_to_file, R_OK):
-            raise HTTPException(400, f"Replay file found under: {efs_path};" +
-                                f" but it is not readable, please check permissions")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Replay file found under: {efs_path};" +
+                                       " but it is not readable, please check permissions")
         # getsize return size in bytes, UNPROCESSED_MAX_SIZE is in Kb
         if (getsize(path_to_file) / 1000) >= config("UNPROCESSED_MAX_SIZE", cast=int, default=200 * 1000):
-            raise HTTPException(413, "Replay file too large")
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Replay file too large")
         return path_to_file
 
     return None
@@ -229,8 +224,9 @@ def get_raw_devtools_by_id(project_id, session_id):
     path_to_file = efs_path + "/" + __get_devtools_path(project_id=project_id, session_id=session_id)
     if path_exists(path_to_file):
         if not access(path_to_file, R_OK):
-            raise HTTPException(400, f"Devtools file found under: {efs_path};"
-                                     f" but it is not readable, please check permissions")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Devtools file found under: {efs_path};"
+                                       " but it is not readable, please check permissions")
 
         return path_to_file
 
@@ -243,7 +239,7 @@ def session_exists(project_id, session_id):
         results = requests.get(ASSIST_URL + config("assist") + f"/{project_key}/{session_id}",
                                timeout=config("assistTimeout", cast=int, default=5))
         if results.status_code != 200:
-            print(f"!! issue with the peer-server code:{results.status_code}")
+            print(f"!! issue with the peer-server code:{results.status_code} for session_exists")
             print(results.text)
             return None
         results = results.json().get("data")
@@ -262,3 +258,27 @@ def session_exists(project_id, session_id):
         except:
             print("couldn't get response")
         return False
+
+
+def __change_keys(key):
+    return {
+        "PAGETITLE": schemas.LiveFilterType.PAGE_TITLE.value,
+        "ACTIVE": "active",
+        "LIVE": "live",
+        "SESSIONID": schemas.LiveFilterType.SESSION_ID.value,
+        "METADATA": schemas.LiveFilterType.METADATA.value,
+        "USERID": schemas.LiveFilterType.USER_ID.value,
+        "USERUUID": schemas.LiveFilterType.USER_UUID.value,
+        "PROJECTKEY": "projectKey",
+        "REVID": schemas.LiveFilterType.REV_ID.value,
+        "TIMESTAMP": "timestamp",
+        "TRACKERVERSION": schemas.LiveFilterType.TRACKER_VERSION.value,
+        "ISSNIPPET": "isSnippet",
+        "USEROS": schemas.LiveFilterType.USER_OS.value,
+        "USERBROWSER": schemas.LiveFilterType.USER_BROWSER.value,
+        "USERBROWSERVERSION": schemas.LiveFilterType.USER_BROWSER_VERSION.value,
+        "USERDEVICE": schemas.LiveFilterType.USER_DEVICE.value,
+        "USERDEVICETYPE": schemas.LiveFilterType.USER_DEVICE_TYPE.value,
+        "USERCOUNTRY": schemas.LiveFilterType.USER_COUNTRY.value,
+        "PROJECTID": "projectId"
+    }.get(key.upper(), key)

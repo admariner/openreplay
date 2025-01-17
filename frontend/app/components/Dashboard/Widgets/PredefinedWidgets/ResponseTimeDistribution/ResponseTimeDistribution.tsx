@@ -1,11 +1,12 @@
 import React from 'react';
-import { Loader, NoContent } from 'UI';
+import { NoContent } from 'UI';
 import { Styles, AvgLabel } from '../../common';
-import { 
-  ComposedChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, 
-  XAxis, YAxis, ReferenceLine, Tooltip, Legend
+import {
+  ComposedChart, Bar, BarChart, CartesianGrid, ResponsiveContainer,
+  XAxis, YAxis, ReferenceLine, Tooltip
 } from 'recharts';
-import { NO_METRIC_DATA } from 'App/constants/messages'
+import { NO_METRIC_DATA } from 'App/constants/messages';
+import { InfoCircleOutlined } from '@ant-design/icons';
 
 
 const PercentileLine = props => {
@@ -41,26 +42,29 @@ const PercentileLine = props => {
 
 interface Props {
     data: any
-    metric?: any
 }
 function ResponseTimeDistribution(props: Props) {
-    const { data, metric } = props;
+    const { data } = props;
     const colors = Styles.colors;
 
     return (
         <NoContent
           size="small"
-          title={NO_METRIC_DATA}
-          show={ metric.data.chart.length === 0 }
+          title={
+            <div className='flex items-center gap-2 text-base font-normal'>
+            <InfoCircleOutlined  size={12} /> { NO_METRIC_DATA }
+        </div>
+          }
+          show={ data.chart.length === 0 }
           style={ { height: '240px' } }
         >
           <div className="flex items-center justify-end mb-3">
-            <AvgLabel text="Avg" unit="ms" className="ml-3" count={metric.data.value} />
+            <AvgLabel text="Avg" unit="ms" className="ml-3" count={data.value} />
           </div>
           <div className="flex mb-4">
             <ResponsiveContainer height={ 240 } width="100%">
                 <ComposedChart
-                  data={metric.data.chart}
+                  data={data.chart}
                   margin={Styles.chartMargins}
                   barSize={50}
                 >
@@ -68,7 +72,7 @@ function ResponseTimeDistribution(props: Props) {
                   <XAxis
                     {...Styles.xaxis}
                     dataKey="responseTime"
-                    label={{ 
+                    label={{
                       ...Styles.axisLabelLeft,
                       angle: 0,
                       offset: 0,
@@ -87,7 +91,7 @@ function ResponseTimeDistribution(props: Props) {
                   />
                   <Bar minPointSize={1} name="Calls" dataKey="count" stackId="a" fill={colors[2]} label="Backend" />
                   <Tooltip {...Styles.tooltip} labelFormatter={val => 'Page Response Time: ' + val} />
-                  { metric.data.percentiles.map((item, i) => (
+                  { data.percentiles && data.percentiles.map((item: any, i: number) => (
                     <ReferenceLine
                       key={i}
                       label={
@@ -111,13 +115,13 @@ function ResponseTimeDistribution(props: Props) {
             </ResponsiveContainer>
             <ResponsiveContainer height={ 240 } width="10%">
               <BarChart
-                data={metric.data.extremeValues}
+                data={data.extremeValues}
                 margin={Styles.chartMargins}
                 barSize={40}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={ false } stroke="#EEEEEE" />
                 <XAxis {...Styles.xaxis} dataKey="time" />
-                <YAxis hide type="number" domain={[0, metric.data.total]} {...Styles.yaxis} allowDecimals={false} />
+                <YAxis hide type="number" domain={[0, data.total]} {...Styles.yaxis} allowDecimals={false} />
                 <Tooltip {...Styles.tooltip} />
                 <Bar minPointSize={1} name="Extreme Values" dataKey="count" stackId="a" fill={colors[0]} />
               </BarChart>

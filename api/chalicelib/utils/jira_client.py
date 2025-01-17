@@ -1,13 +1,14 @@
+import logging
 import time
 from datetime import datetime
 
 import requests
+from fastapi import HTTPException, status
 from jira import JIRA
 from jira.exceptions import JIRAError
 from requests.auth import HTTPBasicAuth
-from starlette import status
-from starlette.exceptions import HTTPException
 
+logger = logging.getLogger(__name__)
 fields = "id, summary, description, creator, reporter, created, assignee, status, updated, comment, issuetype, labels"
 
 
@@ -20,8 +21,8 @@ class JiraManager:
         try:
             self._jira = JIRA(url, basic_auth=(username, password), logging=True, max_retries=0, timeout=3)
         except Exception as e:
-            print("!!! JIRA AUTH ERROR")
-            print(e)
+            logger.warning("!!! JIRA AUTH ERROR")
+            logger.error(e)
             raise e
 
     def set_jira_project_id(self, project_id):
@@ -35,7 +36,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_projects()
-            print(f"=>JIRA Exception {e.text}")
+            logger.error(f"=>JIRA Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
         projects_dict_list = []
         for project in projects:
@@ -51,7 +52,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_project()
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
         return self.__parser_project_info(project)
 
@@ -67,12 +68,11 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_issues(sql, offset)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
 
         issue_dict_list = []
         for issue in issues:
-            # print(issue.raw)
             issue_dict_list.append(self.__parser_issue_info(issue, include_comments=False))
 
         # return {"total": issues.total, "issues": issue_dict_list}
@@ -87,7 +87,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_issue(issue_id)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
         return self.__parser_issue_info(issue)
 
@@ -107,7 +107,7 @@ class JiraManager:
             if self.retries > 0:
                 time.sleep(1)
                 return self.get_issue_v3(issue_id)
-            print(f"=>Exception {e}")
+            logger.error(f"=>Exception {e}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: get issue error")
         return self.__parser_issue_info(issue.json())
 
@@ -121,7 +121,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.create_issue(issue_dict)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
 
     def close_issue(self, issue):
@@ -133,7 +133,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.close_issue(issue)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
 
     def assign_issue(self, issue_id, account_id) -> bool:
@@ -144,7 +144,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.assign_issue(issue_id, account_id)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
 
     def add_comment(self, issue_id: str, comment: str):
@@ -155,7 +155,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.add_comment(issue_id, comment)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
         return self.__parser_comment_info(comment)
 
@@ -192,7 +192,7 @@ class JiraManager:
             if self.retries > 0:
                 time.sleep(1)
                 return self.add_comment_v3(issue_id, comment)
-            print(f"=>Exception {e}")
+            logger.error(f"=>Exception {e}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: comment error")
         return self.__parser_comment_info(comment_response.json())
 
@@ -208,7 +208,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_comments(issueKey)
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
 
     def get_meta(self):
@@ -225,7 +225,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_assignable_users()
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             if e.status_code == 401:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JIRA: 401 Unauthorized")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
@@ -248,7 +248,7 @@ class JiraManager:
             if (e.status_code // 100) == 4 and self.retries > 0:
                 time.sleep(1)
                 return self.get_issue_types()
-            print(f"=>Exception {e.text}")
+            logger.error(f"=>Exception {e.text}")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"JIRA: {e.text}")
         types_dict = []
         for type in types:

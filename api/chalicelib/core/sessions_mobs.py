@@ -1,6 +1,6 @@
 from decouple import config
 
-from chalicelib.utils import s3
+from chalicelib.utils.storage import StorageClient
 
 
 def __get_mob_keys(project_id, session_id):
@@ -14,44 +14,72 @@ def __get_mob_keys(project_id, session_id):
     ]
 
 
+def __get_mobile_video_keys(project_id, session_id):
+    params = {
+        "sessionId": session_id,
+        "projectId": project_id
+    }
+    return [
+        config("SESSION_IOS_VIDEO_PATTERN") % params,
+    ]
+
+
 def __get_mob_keys_deprecated(session_id):
     return [str(session_id), str(session_id) + "e"]
 
 
-def get_urls(project_id, session_id):
+def get_first_url(project_id, session_id, check_existence: bool = True):
+    k = __get_mob_keys(project_id=project_id, session_id=session_id)[0]
+    if check_existence and not StorageClient.exists(bucket=config("sessions_bucket"), key=k):
+        return None
+    return StorageClient.get_presigned_url_for_sharing(
+        bucket=config("sessions_bucket"),
+        expires_in=config("PRESIGNED_URL_EXPIRATION", cast=int, default=900),
+        key=k
+    )
+
+
+def get_urls(project_id, session_id, check_existence: bool = True):
     results = []
     for k in __get_mob_keys(project_id=project_id, session_id=session_id):
-        results.append(s3.client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': config("sessions_bucket"), 'Key': k},
-            ExpiresIn=config("PRESIGNED_URL_EXPIRATION", cast=int, default=900)
+        if check_existence and not StorageClient.exists(bucket=config("sessions_bucket"), key=k):
+            continue
+        results.append(StorageClient.get_presigned_url_for_sharing(
+            bucket=config("sessions_bucket"),
+            expires_in=config("PRESIGNED_URL_EXPIRATION", cast=int, default=900),
+            key=k
         ))
     return results
 
 
-def get_urls_depercated(session_id):
+def get_urls_depercated(session_id, check_existence: bool = True):
     results = []
     for k in __get_mob_keys_deprecated(session_id=session_id):
-        results.append(s3.client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': config("sessions_bucket"), 'Key': k},
-            ExpiresIn=100000
+        if check_existence and not StorageClient.exists(bucket=config("sessions_bucket"), key=k):
+            continue
+        results.append(StorageClient.get_presigned_url_for_sharing(
+            bucket=config("sessions_bucket"),
+            expires_in=100000,
+            key=k
         ))
     return results
 
 
-def get_ios(session_id):
-    return s3.client.generate_presigned_url(
-        'get_object',
-        Params={
-            'Bucket': config("ios_bucket"),
-            'Key': str(session_id)
-        },
-        ExpiresIn=config("PRESIGNED_URL_EXPIRATION", cast=int, default=900)
-    )
+def get_mobile_videos(session_id, project_id, check_existence=False):
+    results = []
+    for k in __get_mobile_video_keys(project_id=project_id, session_id=session_id):
+        if check_existence and not StorageClient.exists(bucket=config("IOS_VIDEO_BUCKET"), key=k):
+            continue
+        results.append(StorageClient.get_presigned_url_for_sharing(
+            bucket=config("IOS_VIDEO_BUCKET"),
+            expires_in=config("PRESIGNED_URL_EXPIRATION", cast=int, default=900),
+            key=k
+        ))
+    return results
 
 
 def delete_mobs(project_id, session_ids):
     for session_id in session_ids:
-        for k in __get_mob_keys(project_id=project_id, session_id=session_id):
-            s3.schedule_for_deletion(config("sessions_bucket"), k)
+        for k in __get_mob_keys(project_id=project_id, session_id=session_id) \
+                 + __get_mob_keys_deprecated(session_id=session_id):
+            StorageClient.tag_for_deletion(bucket=config("sessions_bucket"), key=k)

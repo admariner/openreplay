@@ -1,23 +1,29 @@
 import React from 'react';
 import { NoContent } from 'UI';
 import { Styles } from '../../common';
-import { 
+import {
     CartesianGrid, Tooltip,
-    LineChart, Line, Legend, ResponsiveContainer, 
+    LineChart, Line, Legend, ResponsiveContainer,
     XAxis, YAxis
   } from 'recharts';
-import { NO_METRIC_DATA } from 'App/constants/messages'
+import { NO_METRIC_DATA } from 'App/constants/messages';
+import { InfoCircleOutlined } from '@ant-design/icons';
 
 interface Props {
     data: any
     metric?: any
 }
 function CallsErrors4xx(props: Props) {
-    const { data, metric } = props;  
+    const { data, metric } = props;
     return (
         <NoContent
           size="small"
-          title={NO_METRIC_DATA}
+          title={
+            
+            <div className='flex items-center gap-2 text-base font-normal'>
+            <InfoCircleOutlined  size={12} /> { NO_METRIC_DATA }
+        </div>
+          }
           show={ metric.data.chart.length === 0 }
           style={ { height: '240px' } }
         >
@@ -37,7 +43,7 @@ function CallsErrors4xx(props: Props) {
                 label={{ ...Styles.axisLabelLeft, value: "Number of Errors" }}
                 allowDecimals={false}
               />
-              <Legend />
+              {/*<Legend />*/}
               <Tooltip {...Styles.tooltip} />
               { Array.isArray(metric.data.namesMap) && metric.data.namesMap.map((key, index) => (
                 <Line key={key} name={key} type="monotone" dataKey={key} stroke={Styles.colors[index]} fillOpacity={ 1 } strokeWidth={ 2 } strokeOpacity={ 0.8 } fill="url(#colorCount)" dot={false} />

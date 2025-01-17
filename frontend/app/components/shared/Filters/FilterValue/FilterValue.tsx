@@ -13,6 +13,7 @@ const ASSIST_ROUTE = assistRoute();
 interface Props {
     filter: any;
     onUpdate: (filter: any) => void;
+    isConditional?: boolean;
 }
 function FilterValue(props: Props) {
     const { filter } = props;
@@ -49,9 +50,9 @@ function FilterValue(props: Props) {
         setDurationValues({ ...durationValues, ...newValues });
     };
 
-    const handleBlur = (e: any) => {
+    const handleBlur = () => {
         if (filter.type === FilterType.DURATION) {
-            const { maxDuration, minDuration, key } = filter;
+            const { maxDuration, minDuration } = filter;
             if (maxDuration || minDuration) return;
             if (maxDuration !== durationValues.maxDuration || minDuration !== durationValues.minDuration) {
                 props.onUpdate({ ...filter, value: [durationValues.minDuration, durationValues.maxDuration] });
@@ -124,6 +125,7 @@ function FilterValue(props: Props) {
                         onBlur={handleBlur}
                         minDuration={durationValues.minDuration}
                         maxDuration={durationValues.maxDuration}
+                        isConditional={props.isConditional}
                     />
                 );
             case FilterType.NUMBER_MULTIPLE:
@@ -163,7 +165,7 @@ function FilterValue(props: Props) {
                         onAddValue={onAddValue}
                         onRemoveValue={() => onRemoveValue(valueIndex)}
                         method={'GET'}
-                        endpoint="/events/search"
+                        endpoint="/PROJECT_ID/events/search"
                         params={getParms(filter.key)}
                         headerText={''}
                         placeholder={filter.placeholder}

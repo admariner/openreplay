@@ -2,6 +2,10 @@
 
 OpenReplay Assist Plugin allows you to support your users by seeing their live screen and instantly hopping on call (WebRTC) with them without requiring any 3rd-party screen sharing software.
 
+## Documentation
+
+For launch options and available public methods, [refer to the documentation](https://docs.openreplay.com/plugins/assist)
+
 ## Installation
 
 ```bash
@@ -29,7 +33,8 @@ const tracker = new Tracker({
 });
 tracker.use(trackerAssist(options)); // check the list of available options below
 
-tracker.start();
+// .start() returns a promise
+tracker.start().then(sessionData => ... ).catch(e => ... )
 
 ```
 
@@ -49,7 +54,8 @@ tracker.use(trackerAssist(options)); // check the list of available options belo
 //...
 function MyApp() {
   useEffect(() => { // use componentDidMount in case of React Class Component
-    tracker.start();
+    // .start() returns a promise
+    tracker.start().then(sessionData => ... ).catch(e => ... )
   }, [])
 //...
 }
@@ -57,14 +63,24 @@ function MyApp() {
 
 #### Options
 
-```js
+```ts
 trackerAssist({
-  callConfirm?: string|ConfirmOptions;
-  controlConfirm?: string|ConfirmOptions;
-  config?: object;
-  onAgentConnect?: () => (()=>void | void);
-  onCallStart?: () => (()=>void | void);
-  onRemoteControlStart?: () => (()=>void | void);
+  onAgentConnect: StartEndCallback;
+  onCallStart: StartEndCallback;
+  onRemoteControlStart: StartEndCallback;
+  onRecordingRequest?: (agentInfo: Record<string, any>) => any;
+  onCallDeny?: () => any;
+  onRemoteControlDeny?: (agentInfo: Record<string, any>) => any;
+  onRecordingDeny?: (agentInfo: Record<string, any>) => any;
+  session_calling_peer_key: string;
+  session_control_peer_key: string;
+  callConfirm: ConfirmOptions;
+  controlConfirm: ConfirmOptions;
+  recordingConfirm: ConfirmOptions;
+  socketHost?: string;
+  config: RTCConfiguration;
+  serverURL: string
+  callUITemplate?: string;
 })
 ```
 
@@ -72,7 +88,7 @@ trackerAssist({
 type ConfirmOptions = {
   text?:string,
   style?: StyleObject, // style object (i.e {color: 'red', borderRadius: '10px'})
-  confirmBtn?: ButtonOptions, 
+  confirmBtn?: ButtonOptions,
   declineBtn?: ButtonOptions
 }
 
@@ -82,7 +98,7 @@ type ButtonOptions = HTMLButtonElement | string | {
 }
 ```
 
-- `callConfirm`: Customize the text and/or layout of the call request popup. 
+- `callConfirm`: Customize the text and/or layout of the call request popup.
 - `controlConfirm`: Customize the text and/or layout of the remote control request popup.
 - `config`: Contains any custom ICE/TURN server configuration. Defaults to `{ 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }], 'sdpSemantics': 'unified-plan' }`.
 - `onAgentConnect: () => (()=>void | void)`: This callback function is fired when someone from OpenReplay UI connects to the current live session. It can return another function. In this case, returned callback will be called when the same agent connection gets closed.

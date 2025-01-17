@@ -1,10 +1,9 @@
 package messages
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"io"
-	"log"
+	"openreplay/backend/pkg/logger"
 )
 
 // MessageHandler processes one message using service logic
@@ -16,6 +15,7 @@ type MessageIterator interface {
 }
 
 type messageIteratorImpl struct {
+	log         logger.Logger
 	filter      map[int]struct{}
 	preFilter   map[int]struct{}
 	handler     MessageHandler
@@ -26,10 +26,16 @@ type messageIteratorImpl struct {
 	broken      bool
 	messageInfo *message
 	batchInfo   *BatchInfo
+	urls        *pageLocations
 }
 
-func NewMessageIterator(messageHandler MessageHandler, messageFilter []int, autoDecode bool) MessageIterator {
-	iter := &messageIteratorImpl{handler: messageHandler, autoDecode: autoDecode}
+func NewMessageIterator(log logger.Logger, messageHandler MessageHandler, messageFilter []int, autoDecode bool) MessageIterator {
+	iter := &messageIteratorImpl{
+		log:        log,
+		handler:    messageHandler,
+		autoDecode: autoDecode,
+		urls:       NewPageLocations(),
+	}
 	if len(messageFilter) != 0 {
 		filter := make(map[int]struct{}, len(messageFilter))
 		for _, msgType := range messageFilter {
@@ -40,7 +46,8 @@ func NewMessageIterator(messageHandler MessageHandler, messageFilter []int, auto
 	iter.preFilter = map[int]struct{}{
 		MsgBatchMetadata: {}, MsgBatchMeta: {}, MsgTimestamp: {},
 		MsgSessionStart: {}, MsgSessionEnd: {}, MsgSetPageLocation: {},
-		MsgSessionEndDeprecated: {}}
+		MsgMobileBatchMeta: {},
+	}
 	return iter
 }
 
@@ -54,78 +61,37 @@ func (i *messageIteratorImpl) prepareVars(batchInfo *BatchInfo) {
 }
 
 func (i *messageIteratorImpl) Iterate(batchData []byte, batchInfo *BatchInfo) {
+	ctx := context.WithValue(context.Background(), "sessionID", batchInfo.sessionID)
+
+	// Create new message reader
+	reader := NewMessageReader(batchData)
+
+	// Pre-decode batch data
+	if err := reader.Parse(); err != nil {
+		i.log.Error(ctx, "pre-decode batch err: %s, info: %s", err, batchInfo.Info())
+		return
+	}
+
 	// Prepare iterator before processing messages in batch
 	i.prepareVars(batchInfo)
 
-	// Initialize batch reader
-	reader := bytes.NewReader(batchData)
-
-	// Process until end of batch or parsing error
-	for {
+	for reader.Next() {
 		// Increase message index (can be overwritten by batch info message)
 		i.messageInfo.Index++
 
-		if i.broken {
-			log.Printf("skipping broken batch, info: %s", i.batchInfo.Info())
-			return
-		}
-
-		if i.canSkip {
-			if _, err := reader.Seek(int64(i.size), io.SeekCurrent); err != nil {
-				log.Printf("can't skip message: %s, info: %s", err, i.batchInfo.Info())
-				return
-			}
-		}
-		i.canSkip = false
-
-		// Read message type
-		msgType, err := ReadUint(reader)
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("can't read message type: %s, info: %s", err, i.batchInfo.Info())
-			}
-			return
-		}
-
-		var msg Message
-		// Read message body (and decode if protocol version less than 1)
-		if i.version > 0 && messageHasSize(msgType) {
-			// Read message size if it is a new protocol version
-			i.size, err = ReadSize(reader)
-			if err != nil {
-				log.Printf("can't read message size: %s, info: %s", err, i.batchInfo.Info())
-				return
-			}
-			msg = &RawMessage{
-				tp:      msgType,
-				size:    i.size,
-				reader:  reader,
-				raw:     batchData,
-				skipped: &i.canSkip,
-				broken:  &i.broken,
-				meta:    i.messageInfo,
-			}
-			i.canSkip = true
-		} else {
-			msg, err = ReadMessage(msgType, reader)
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("can't read message body: %s, info: %s", err, i.batchInfo.Info())
-				}
-				return
-			}
-			msg = transformDeprecated(msg)
-		}
+		msg := reader.Message()
+		msgType := msg.TypeID()
 
 		// Preprocess "system" messages
 		if _, ok := i.preFilter[msg.TypeID()]; ok {
 			msg = msg.Decode()
 			if msg == nil {
-				log.Printf("decode error, type: %d, info: %s", msgType, i.batchInfo.Info())
+				i.log.Error(ctx, "decode error, type: %d, info: %s", msgType, i.batchInfo.Info())
 				return
 			}
+			msg = transformDeprecated(msg)
 			if err := i.preprocessing(msg); err != nil {
-				log.Printf("message preprocessing err: %s", err)
+				i.log.Error(ctx, "message preprocessing err: %s", err)
 				return
 			}
 		}
@@ -140,7 +106,7 @@ func (i *messageIteratorImpl) Iterate(batchData []byte, batchInfo *BatchInfo) {
 		if i.autoDecode {
 			msg = msg.Decode()
 			if msg == nil {
-				log.Printf("decode error, type: %d, info: %s", msgType, i.batchInfo.Info())
+				i.log.Error(ctx, "decode error, type: %d, info: %s", msgType, i.batchInfo.Info())
 				return
 			}
 		}
@@ -148,13 +114,24 @@ func (i *messageIteratorImpl) Iterate(batchData []byte, batchInfo *BatchInfo) {
 		// Set meta information for message
 		msg.Meta().SetMeta(i.messageInfo)
 
+		// Update timestamp value for iOS message types
+		if IsMobileType(msgType) {
+			msgTime := i.getMobileTimestamp(msg)
+			msg.Meta().Timestamp = msgTime
+		}
+
 		// Process message
 		i.handler(msg)
 	}
 }
 
+func (i *messageIteratorImpl) getMobileTimestamp(msg Message) uint64 {
+	return GetTimestamp(msg)
+}
+
 func (i *messageIteratorImpl) zeroTsLog(msgType string) {
-	log.Printf("zero timestamp in %s, info: %s", msgType, i.batchInfo.Info())
+	ctx := context.WithValue(context.Background(), "sessionID", i.batchInfo.sessionID)
+	i.log.Warn(ctx, "zero timestamp in %s, info: %s", msgType, i.batchInfo.Info())
 }
 
 func (i *messageIteratorImpl) preprocessing(msg Message) error {
@@ -167,46 +144,65 @@ func (i *messageIteratorImpl) preprocessing(msg Message) error {
 			return fmt.Errorf("incorrect batch version: %d, skip current batch, info: %s", i.version, i.batchInfo.Info())
 		}
 		i.messageInfo.Index = m.PageNo<<32 + m.FirstIndex // 2^32  is the maximum count of messages per page (ha-ha)
-		i.messageInfo.Timestamp = m.Timestamp
+		i.messageInfo.Timestamp = uint64(m.Timestamp)
 		if m.Timestamp == 0 {
 			i.zeroTsLog("BatchMetadata")
 		}
-		i.messageInfo.Url = m.Url
+		i.messageInfo.Url = m.Location
 		i.version = m.Version
 		i.batchInfo.version = m.Version
 
-	case *BatchMeta: // Is not required to be present in batch since IOS doesn't have it (though we might change it)
+	case *BatchMeta: // Is not required to be present in batch since Mobile doesn't have it (though we might change it)
 		if i.messageInfo.Index > 1 { // Might be several 0-0 BatchMeta in a row without an error though
 			return fmt.Errorf("batchMeta found at the end of the batch, info: %s", i.batchInfo.Info())
 		}
 		i.messageInfo.Index = m.PageNo<<32 + m.FirstIndex // 2^32  is the maximum count of messages per page (ha-ha)
-		i.messageInfo.Timestamp = m.Timestamp
+		i.messageInfo.Timestamp = uint64(m.Timestamp)
 		if m.Timestamp == 0 {
 			i.zeroTsLog("BatchMeta")
 		}
+		// Try to get saved session's page url
+		if savedURL := i.urls.Get(i.messageInfo.batch.sessionID); savedURL != "" {
+			i.messageInfo.Url = savedURL
+		}
 
 	case *Timestamp:
-		i.messageInfo.Timestamp = int64(m.Timestamp)
+		i.messageInfo.Timestamp = m.Timestamp
 		if m.Timestamp == 0 {
 			i.zeroTsLog("Timestamp")
 		}
 
 	case *SessionStart:
-		i.messageInfo.Timestamp = int64(m.Timestamp)
+		i.messageInfo.Timestamp = m.Timestamp
 		if m.Timestamp == 0 {
 			i.zeroTsLog("SessionStart")
-			log.Printf("zero session start, project: %d, UA: %s, tracker: %s, info: %s",
+			ctx := context.WithValue(context.Background(), "sessionID", i.batchInfo.sessionID)
+			i.log.Warn(ctx, "zero timestamp in SessionStart, project: %d, UA: %s, tracker: %s, info: %s",
 				m.ProjectID, m.UserAgent, m.TrackerVersion, i.batchInfo.Info())
 		}
 
 	case *SessionEnd:
-		i.messageInfo.Timestamp = int64(m.Timestamp)
+		i.messageInfo.Timestamp = m.Timestamp
 		if m.Timestamp == 0 {
 			i.zeroTsLog("SessionEnd")
 		}
+		// Delete session from urls cache layer
+		i.urls.Delete(i.messageInfo.batch.sessionID)
 
 	case *SetPageLocation:
 		i.messageInfo.Url = m.URL
+		// Save session page url in cache for using in next batches
+		i.urls.Set(i.messageInfo.batch.sessionID, m.URL)
+
+	case *MobileBatchMeta:
+		if i.messageInfo.Index > 1 { // Might be several 0-0 BatchMeta in a row without an error though
+			return fmt.Errorf("batchMeta found at the end of the batch, info: %s", i.batchInfo.Info())
+		}
+		i.messageInfo.Index = m.FirstIndex
+		i.messageInfo.Timestamp = m.Timestamp
+		if m.Timestamp == 0 {
+			i.zeroTsLog("MobileBatchMeta")
+		}
 	}
 	return nil
 }

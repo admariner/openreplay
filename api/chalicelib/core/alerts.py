@@ -1,11 +1,18 @@
 import json
 import logging
 import time
+from datetime import datetime
+
+from decouple import config
 
 import schemas
-from chalicelib.core import notifications, slack, webhook
-from chalicelib.utils import pg_client, helper, email_helper
+from chalicelib.core import notifications, webhook
+from chalicelib.core.collaboration_msteams import MSTeams
+from chalicelib.core.collaboration_slack import Slack
+from chalicelib.utils import pg_client, helper, email_helper, smtp
 from chalicelib.utils.TimeUTC import TimeUTC
+
+logger = logging.getLogger(__name__)
 
 
 def get(id):
@@ -24,10 +31,15 @@ def get(id):
 def get_all(project_id):
     with pg_client.PostgresClient() as cur:
         query = cur.mogrify("""\
-                    SELECT *
-                    FROM public.alerts 
-                    WHERE project_id =%(project_id)s AND deleted_at ISNULL
-                    ORDER BY created_at;""",
+                    SELECT alerts.*,
+                           COALESCE(metrics.name || '.' || (COALESCE(metric_series.name, 'series ' || index)) || '.count',
+                                    query ->> 'left') AS series_name
+                    FROM public.alerts
+                         LEFT JOIN metric_series USING (series_id)
+                         LEFT JOIN metrics USING (metric_id)
+                    WHERE alerts.project_id =%(project_id)s 
+                        AND alerts.deleted_at ISNULL
+                    ORDER BY alerts.created_at;""",
                             {"project_id": project_id})
         cur.execute(query=query)
         all = helper.list_to_camel_case(cur.fetchall())
@@ -45,7 +57,7 @@ def __process_circular(alert):
 
 
 def create(project_id, data: schemas.AlertSchema):
-    data = data.dict()
+    data = data.model_dump()
     data["query"] = json.dumps(data["query"])
     data["options"] = json.dumps(data["options"])
 
@@ -62,7 +74,7 @@ def create(project_id, data: schemas.AlertSchema):
 
 
 def update(id, data: schemas.AlertSchema):
-    data = data.dict()
+    data = data.model_dump()
     data["query"] = json.dumps(data["query"])
     data["options"] = json.dumps(data["options"])
 
@@ -95,7 +107,7 @@ def process_notifications(data):
             for c in n["options"].pop("message"):
                 if c["type"] not in full:
                     full[c["type"]] = []
-                if c["type"] in ["slack", "email"]:
+                if c["type"] in ["slack", "msteams", "email"]:
                     full[c["type"]].append({
                         "notification": n,
                         "destination": c["value"]
@@ -106,26 +118,34 @@ def process_notifications(data):
     BATCH_SIZE = 200
     for t in full.keys():
         for i in range(0, len(full[t]), BATCH_SIZE):
-            notifications_list = full[t][i:i + BATCH_SIZE]
+            notifications_list = full[t][i:min(i + BATCH_SIZE, len(full[t]))]
+            if notifications_list is None or len(notifications_list) == 0:
+                break
 
             if t == "slack":
                 try:
-                    slack.send_batch(notifications_list=notifications_list)
+                    send_to_slack_batch(notifications_list=notifications_list)
                 except Exception as e:
-                    logging.error("!!!Error while sending slack notifications batch")
-                    logging.error(str(e))
+                    logger.error("!!!Error while sending slack notifications batch")
+                    logger.error(str(e))
+            elif t == "msteams":
+                try:
+                    send_to_msteams_batch(notifications_list=notifications_list)
+                except Exception as e:
+                    logger.error("!!!Error while sending msteams notifications batch")
+                    logger.error(str(e))
             elif t == "email":
                 try:
                     send_by_email_batch(notifications_list=notifications_list)
                 except Exception as e:
-                    logging.error("!!!Error while sending email notifications batch")
-                    logging.error(str(e))
+                    logger.error("!!!Error while sending email notifications batch")
+                    logger.error(str(e))
             elif t == "webhook":
                 try:
                     webhook.trigger_batch(data_list=notifications_list)
                 except Exception as e:
-                    logging.error("!!!Error while sending webhook notifications batch")
-                    logging.error(str(e))
+                    logger.error("!!!Error while sending webhook notifications batch")
+                    logger.error(str(e))
 
 
 def send_by_email(notification, destination):
@@ -139,26 +159,67 @@ def send_by_email(notification, destination):
 
 
 def send_by_email_batch(notifications_list):
-    if not helper.has_smtp():
-        logging.info("no SMTP configuration for email notifications")
+    if not smtp.has_smtp():
+        logger.info("no SMTP configuration for email notifications")
     if notifications_list is None or len(notifications_list) == 0:
-        logging.info("no email notifications")
+        logger.info("no email notifications")
         return
     for n in notifications_list:
         send_by_email(notification=n.get("notification"), destination=n.get("destination"))
         time.sleep(1)
 
 
+def send_to_slack_batch(notifications_list):
+    webhookId_map = {}
+    for n in notifications_list:
+        if n.get("destination") not in webhookId_map:
+            webhookId_map[n.get("destination")] = {"tenantId": n["notification"]["tenantId"], "batch": []}
+        webhookId_map[n.get("destination")]["batch"].append({"text": n["notification"]["description"] \
+                                                                     + f"\n<{config('SITE_URL')}{n['notification']['buttonUrl']}|{n['notification']['buttonText']}>",
+                                                             "title": n["notification"]["title"],
+                                                             "title_link": n["notification"]["buttonUrl"],
+                                                             "ts": datetime.now().timestamp()})
+    for batch in webhookId_map.keys():
+        Slack.send_batch(tenant_id=webhookId_map[batch]["tenantId"], webhook_id=batch,
+                         attachments=webhookId_map[batch]["batch"])
+
+
+def send_to_msteams_batch(notifications_list):
+    webhookId_map = {}
+    for n in notifications_list:
+        if n.get("destination") not in webhookId_map:
+            webhookId_map[n.get("destination")] = {"tenantId": n["notification"]["tenantId"], "batch": []}
+
+        link = f"{config('SITE_URL')}{n['notification']['buttonUrl']}"
+        # for MSTeams, the batch is the list of `sections`
+        webhookId_map[n.get("destination")]["batch"].append(
+            {
+                "activityTitle": n["notification"]["title"],
+                "activitySubtitle": f"On Project *{n['notification']['projectName']}*",
+                "facts": [
+                    {
+                        "name": "Target:",
+                        "value": link
+                    },
+                    {
+                        "name": "Description:",
+                        "value": n["notification"]["description"]
+                    }],
+                "markdown": True
+            }
+        )
+    for batch in webhookId_map.keys():
+        MSTeams.send_batch(tenant_id=webhookId_map[batch]["tenantId"], webhook_id=batch,
+                           attachments=webhookId_map[batch]["batch"])
+
+
 def delete(project_id, alert_id):
     with pg_client.PostgresClient() as cur:
         cur.execute(
-            cur.mogrify("""\
-                            UPDATE public.alerts 
-                            SET 
-                              deleted_at = timezone('utc'::text, now()),
-                              active = FALSE
-                            WHERE 
-                                alert_id = %(alert_id)s AND project_id=%(project_id)s;""",
+            cur.mogrify(""" UPDATE public.alerts 
+                            SET deleted_at = timezone('utc'::text, now()),
+                                active = FALSE
+                            WHERE alert_id = %(alert_id)s AND project_id=%(project_id)s;""",
                         {"alert_id": alert_id, "project_id": project_id})
         )
     return {"data": {"state": "success"}}
@@ -170,5 +231,5 @@ def get_predefined_values():
                "unit": "count" if v.endswith(".count") else "ms",
                "predefined": True,
                "metricId": None,
-               "seriesId": None} for v in values if v != schemas.AlertColumn.custom]
+               "seriesId": None} for v in values if v != schemas.AlertColumn.CUSTOM]
     return values

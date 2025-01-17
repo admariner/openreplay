@@ -3,10 +3,11 @@ import { NoContent } from 'UI';
 import { Styles } from '../../common';
 import { 
     BarChart, Bar, CartesianGrid, Tooltip,
-    LineChart, Line, Legend, ResponsiveContainer, 
+    Legend, ResponsiveContainer,
     XAxis, YAxis
   } from 'recharts';
-  import { NO_METRIC_DATA } from 'App/constants/messages'
+  import { NO_METRIC_DATA } from 'App/constants/messages';
+  import { InfoCircleOutlined } from '@ant-design/icons';
 
 interface Props {
     data: any
@@ -16,7 +17,11 @@ function SessionsAffectedByJSErrors(props: Props) {
     const { data, metric } = props;
     return (
         <NoContent
-          title={NO_METRIC_DATA}
+          title={
+            <div className='flex items-center gap-2 text-base font-normal'>
+            <InfoCircleOutlined  size={12} /> { NO_METRIC_DATA }
+        </div>
+          }
           size="small"
           show={ metric.data.chart.length === 0 }
           style={ { height: '240px' } }

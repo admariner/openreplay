@@ -1,33 +1,65 @@
 // @flow
 
 import { DateTime, Duration } from 'luxon'; // TODO
-import { toJS } from 'mobx';
-import { Timezone } from 'MOBX/types/sessionSettings';
+import { Timezone } from 'App/mstore/types/sessionSettings';
+import { LAST_24_HOURS, LAST_30_DAYS, LAST_7_DAYS } from 'Types/app/period';
+import { CUSTOM_RANGE } from '@/dateRange';
 
-export const durationFormatted = (duration: Duration):string => {
-  if (duration.as('minutes') < 1) { // show in seconds
-    duration = duration.toFormat('s\'s\'');
-  } else if (duration.as('hours') < 1) { // show in minutes
-    duration = duration.toFormat('m\'m\'s\'s');
-  } else if (duration.as('days') < 1) { // show in hours and minutes
-    duration = duration.toFormat('h\'h\'m\'m');
-  } else if (duration.as('months') < 1) { // show in days and hours
-    duration = duration.toFormat('d\'d\'h\'h');
+export function getDateFromString(date: string, format = 'yyyy-MM-dd HH:mm:ss:SSS'): string {
+  return DateTime.fromISO(date).toFormat(format);
+}
+
+/**
+ * Formats a given duration.
+ *
+ * @param {Duration | number} inputDuration - The duration to format. Can be a Duration object or a number representing milliseconds.
+ * @returns {string} - Formatted duration string.
+ *
+ * @example
+ *
+ * // Format a duration from a Duration object
+ * const duration1 = Duration.fromObject({ hours: 2, minutes: 30 });
+ * console.log(durationFormatted(duration1)); // Outputs: "2h30m"
+ *
+ * // Format a duration from milliseconds
+ * console.log(durationFormatted(55000)); // Outputs: "55s"
+ */
+export const durationFormatted = (inputDuration: Duration | number): string => {
+  let duration: Duration;
+
+  if (inputDuration instanceof Duration) {
+    duration = inputDuration;
   } else {
-    duration = duration.toFormat('m\'m\'s\'s\'');
+    duration = Duration.fromMillis(inputDuration);
   }
 
-  return duration;
+  if (duration.as('minutes') < 1) { // show in seconds
+    return duration.toFormat('s\'s\'');
+  } else if (duration.as('hours') < 1) { // show in minutes
+    return duration.toFormat('m\'m\'s\'s\'');
+  } else if (duration.as('days') < 1) { // show in hours and minutes
+    return duration.toFormat('h\'h\'m\'m\'');
+  } else if (duration.as('months') < 1) { // show in days and hours
+    return duration.toFormat('d\'d\'h\'h\'');
+  } else {
+    return duration.toFormat('m\'m\'s\'s\'');
+  }
 };
 
 export function durationFromMsFormatted(ms: number): string {
   return durationFormatted(Duration.fromMillis(ms || 0));
 }
 
-export function durationFromMs(ms: number): string {
+export function shortDurationFromMs(ms: number): string {
   const dur = Duration.fromMillis(ms)
 
-  return dur.toFormat('hh:mm:ss')
+  return dur.toFormat(`mm:ss`)
+}
+
+export function durationFromMs(ms: number, isFull?: boolean): string {
+  const dur = Duration.fromMillis(ms)
+
+  return dur.toFormat(`hh:mm:ss${ isFull ? '.SSS' : '' }`)
 }
 
 export const durationFormattedFull = (duration: Duration): string => {
@@ -45,7 +77,7 @@ export const durationFormattedFull = (duration: Duration): string => {
     duration = d + (d > 1 ? ' days' : ' day');
   } else {
     let d = Math.trunc(duration.as('months'));
-    duration = d + (d > 1 ? ' months' : ' month');;
+    duration = d + (d > 1 ? ' months' : ' month');
   }
 
   return duration;
@@ -62,6 +94,11 @@ export const diffFromNowShortString = (ts: number): string =>
 
 export const getDateFromMill = date =>
   (typeof date === "number" ? DateTime.fromMillis(date) : undefined);
+
+export const getTimeFromMill = (dateTime: number, tz: string) => {
+  const date = DateTime.fromMillis(dateTime);
+  return date.setZone(tz).toFormat('HH:mm:ss ZZZZ');
+}
 
 
 /**
@@ -83,7 +120,7 @@ export function formatDateTimeDefault(timestamp: number): string {
  * @param {Object} timezone fixed offset like UTC+6
  * @returns {String} formatted date (or time if its today)
  */
-export function formatTimeOrDate(timestamp: number, timezone: Timezone, isFull = false): string {
+export function formatTimeOrDate(timestamp: number, timezone?: Timezone, isFull = false): string {
   var date = DateTime.fromMillis(timestamp)
   if (timezone) {
     if (timezone.value === 'UTC') date = date.toUTC();
@@ -155,4 +192,36 @@ export const countDaysFrom = (timestamp: number): number => {
   const date = DateTime.fromMillis(timestamp);
   const d = new Date();
   return Math.round(Math.abs(d.getTime() - date.toJSDate().getTime()) / (1000 * 3600 * 24));
+}
+
+export const getDateRangeUTC = (rangeName: string, customStartDate?: number, customEndDate?: number): {
+  startDate: number;
+  endDate: number
+}  => {
+  let endDate = new Date().getTime();
+  let startDate: number;
+
+  switch (rangeName) {
+    case LAST_7_DAYS:
+      startDate = endDate - 7 * 24 * 60 * 60 * 1000;
+      break;
+    case LAST_30_DAYS:
+      startDate = endDate - 30 * 24 * 60 * 60 * 1000;
+      break;
+    case CUSTOM_RANGE:
+      if (!customStartDate || !customEndDate) {
+        throw new Error('Start date and end date must be provided for CUSTOM_RANGE.');
+      }
+      startDate = customStartDate;
+      endDate = customEndDate;
+      break;
+    case LAST_24_HOURS:
+    default:
+      startDate = endDate - 24 * 60 * 60 * 1000;
+  }
+
+  return {
+    startDate,
+    endDate
+  };
 }

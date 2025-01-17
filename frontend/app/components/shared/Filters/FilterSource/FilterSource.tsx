@@ -1,8 +1,8 @@
 import { FilterType } from 'App/types/filter/filterType';
 import React, { useState, useEffect } from 'react';
 import stl from './FilterSource.module.css';
-import { debounce } from 'App/utils';
 import cn from 'classnames';
+import { debounce } from 'App/utils';
 
 interface Props {
     filter: any;
@@ -10,18 +10,17 @@ interface Props {
 }
 function FilterSource(props: Props) {
     const { filter } = props;
-    const [value, setValue] = useState(filter.source[0] || '');
+    const [value, setValue] = useState(filter.source && filter.source[0] ? filter.source[0] : '');
     const debounceUpdate: any = React.useCallback(debounce(props.onUpdate, 1000), [props.onUpdate]);
 
     useEffect(() => {
-        setValue(filter.source[0] || '');
+        setValue(filter.source && filter.source[0] ? filter.source[0] : '');
     }, [filter]);
 
-    useEffect(() => {
+    const write = ({ target: { value, name } }: any) => {
+        setValue(value);
         debounceUpdate({ ...filter, source: [value] });
-    }, [value]);
-
-    const write = ({ target: { value, name } }: any) => setValue(value);
+    }
 
     const renderFiled = () => {
         switch (filter.sourceType) {

@@ -1,12 +1,9 @@
 import React, { useEffect } from 'react';
 import { useStore } from 'App/mstore';
-import Filter from 'Types/filter';
-import { filtersMap } from 'Types/filter/newFilter';
 import { FilterKey } from 'App/types/filter/filterType';
 import { NoContent, Pagination, Loader, Avatar } from 'UI';
 import SessionItem from 'Shared/SessionItem';
 import SelectDateRange from 'Shared/SelectDateRange';
-import Period from 'Types/app/period';
 import { useObserver, observer } from 'mobx-react-lite';
 import { useModal } from 'App/components/Modal';
 import AnimatedSVG, { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
@@ -49,7 +46,7 @@ function UserSessionsModal(props: Props) {
     useEffect(fetchData, [filter.page, filter.startDate, filter.endDate]);
 
     return (
-        <div className="h-screen overflow-y-auto bg-white" style={{ width: '700px' }}>
+        <div className="bg-white pb-6 h-screen">
             <div className="flex items-center justify-between w-full px-5 py-3">
                 <div className="text-lg flex items-center">
                     <Avatar isActive={false} seed={hash} isAssist={false} className={''} />
@@ -64,16 +61,16 @@ function UserSessionsModal(props: Props) {
 
             <NoContent show={data.sessions.length === 0} title={
                 <div>
-                    <AnimatedSVG name={ICONS.NO_SESSIONS} size={170} />
-                    <div className="mt-2" />
-                    <div className="text-center text-gray-600">No recordings found.</div>
+                    <AnimatedSVG name={ICONS.NO_SESSIONS} size={60} />
+                    <div className="mt-4" />
+                    <div className="text-center">No recordings found</div>
                 </div>
             }>
-                <div className="border rounded m-5">
+                <div className="border rounded m-5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 85px)'}}>
                     <Loader loading={loading}>
                         {data.sessions.map((session: any) => (
                             <div className="border-b last:border-none" key={session.sessionId}>
-                                <SessionItem key={session.sessionId} session={session} compact={true} onClick={hideModal} />
+                                <SessionItem key={session.sessionId} session={session} compact={true} onClick={hideModal} ignoreAssist={true} />
                             </div>
                         ))}
                     </Loader>
@@ -87,7 +84,7 @@ function UserSessionsModal(props: Props) {
                         </div>
                         <Pagination
                             page={filter.page}
-                            totalPages={Math.ceil(data.total / PER_PAGE)}
+                            total={data.total}
                             onPageChange={(page) => filter.update('page', page)}
                             limit={PER_PAGE}
                             debounceRequest={1000}

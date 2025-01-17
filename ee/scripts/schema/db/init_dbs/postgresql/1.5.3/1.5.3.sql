@@ -1,9 +1,23 @@
+\set previous_version 'v1.5.2-ee'
+\set next_version 'v1.5.3-ee'
+SELECT openreplay_version()                       AS current_version,
+       openreplay_version() = :'previous_version' AS valid_previous,
+       openreplay_version() = :'next_version'     AS is_next
+\gset
+
+\if :valid_previous
+\echo valid previous DB version :'previous_version', starting DB upgrade to :'next_version'
 BEGIN;
+SELECT format($fn_def$
 CREATE OR REPLACE FUNCTION openreplay_version()
     RETURNS text AS
 $$
-SELECT 'v1.5.3-ee'
+SELECT '%1$s'
 $$ LANGUAGE sql IMMUTABLE;
+$fn_def$, :'next_version')
+\gexec
+
+--
 
 UPDATE metrics
 SET is_public= TRUE;
@@ -96,3 +110,9 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS graphql_request_body_nn_idx ON events.gr
 CREATE INDEX CONCURRENTLY IF NOT EXISTS graphql_request_body_nn_gin_idx ON events.graphql USING GIN (request_body gin_trgm_ops) WHERE request_body IS NOT NULL;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS graphql_response_body_nn_idx ON events.graphql (response_body) WHERE response_body IS NOT NULL;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS graphql_response_body_nn_gin_idx ON events.graphql USING GIN (response_body gin_trgm_ops) WHERE response_body IS NOT NULL;
+
+\elif :is_next
+\echo new version detected :'next_version', nothing to do
+\else
+\warn skipping DB upgrade of :'next_version', expected previous version :'previous_version', found :'current_version'
+\endif

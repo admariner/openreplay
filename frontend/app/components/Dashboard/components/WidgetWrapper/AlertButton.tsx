@@ -1,28 +1,34 @@
 import React from 'react';
-import { connect } from 'react-redux';
 import WidgetIcon from './WidgetIcon';
-import { init as initAlert } from 'Duck/alerts';
-import { useStore } from 'App/mstore';
+import {useStore} from 'App/mstore';
+import {Button} from "antd";
+import {BellIcon} from "lucide-react";
+import {useModal} from "Components/ModalContext";
+import AlertFormModal from "Components/Alerts/AlertFormModal/AlertFormModal";
 
 interface Props {
     seriesId: string;
-    initAlert: Function;
+    initAlert?: Function;
 }
+
 function AlertButton(props: Props) {
-    const { seriesId, initAlert } = props;
-    const { dashboardStore } = useStore();
+    const {seriesId} = props;
+    const {dashboardStore, alertsStore} = useStore();
+    const {openModal, closeModal} = useModal();
     const onClick = () => {
-        initAlert({ query: { left: seriesId }})
-        dashboardStore.updateKey('showAlertModal', true);
+        // dashboardStore.toggleAlertModal(true);
+        alertsStore.init({query: {left: seriesId}})
+        openModal(<AlertFormModal
+            onClose={closeModal}
+        />, {
+            // title: 'Set Alerts',
+            placement: 'right',
+            width: 620,
+        });
     }
     return (
-        <WidgetIcon
-            className="cursor-pointer"
-            icon="bell-plus"
-            tooltip="Set Alert"
-            onClick={onClick}
-        />
+        <Button onClick={onClick} type="text" icon={<BellIcon size={16}/>}/>
     );
 }
 
-export default connect(null, { initAlert })(AlertButton);
+export default AlertButton;

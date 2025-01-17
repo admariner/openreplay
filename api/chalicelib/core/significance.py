@@ -1,8 +1,8 @@
-__author__ = "AZNAUROV David"
-__maintainer__ = "KRAIEM Taha Yassine"
+import logging
 
 import schemas
-from chalicelib.core import events, metadata, sessions
+from chalicelib.core import events, metadata
+from chalicelib.utils import sql_helper as sh
 
 """
 todo: remove LIMIT from the query
@@ -16,24 +16,25 @@ from collections import defaultdict
 from psycopg2.extras import RealDictRow
 from chalicelib.utils import pg_client, helper
 
+logger = logging.getLogger(__name__)
 SIGNIFICANCE_THRSH = 0.4
-
+# Taha: the value 24 was estimated in v1.15
 T_VALUES = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
             11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.13, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
-            21: 2.080, 22: 2.074, 23: 2.069, 25: 2.064, 26: 2.060, 27: 2.056, 28: 2.052, 29: 2.045, 30: 2.042}
+            21: 2.080, 22: 2.074, 23: 2.069, 24: 2.067, 25: 2.064, 26: 2.060, 27: 2.056, 28: 2.052, 29: 2.045,
+            30: 2.042}
 
 
-def get_stages_and_events(filter_d, project_id) -> List[RealDictRow]:
+def get_stages_and_events(filter_d: schemas.CardSeriesFilterSchema, project_id) -> List[RealDictRow]:
     """
     Add minimal timestamp
     :param filter_d: dict contains events&filters&...
     :return:
     """
-    stages: [dict] = filter_d.get("events", [])
-    filters: [dict] = filter_d.get("filters", [])
-    filter_issues = filter_d.get("issueTypes")
-    if filter_issues is None or len(filter_issues) == 0:
-        filter_issues = []
+    stages: [dict] = filter_d.events
+    filters: [dict] = filter_d.filters
+    filter_issues = []
+
     stage_constraints = ["main.timestamp <= %(endTimestamp)s"]
     first_stage_extra_constraints = ["s.project_id=%(project_id)s", "s.start_ts >= %(startTimestamp)s",
                                      "s.start_ts <= %(endTimestamp)s"]
@@ -43,142 +44,135 @@ def get_stages_and_events(filter_d, project_id) -> List[RealDictRow]:
     if len(filters) > 0:
         meta_keys = None
         for i, f in enumerate(filters):
-            if not isinstance(f["value"], list):
-                f.value = [f["value"]]
-            if len(f["value"]) == 0 or f["value"] is None:
+            if len(f.value) == 0:
                 continue
-            f["value"] = helper.values_for_operator(value=f["value"], op=f["operator"])
-            # filter_args = _multiple_values(f["value"])
-            op = sessions.__get_sql_operator(f["operator"])
+            f.value = helper.values_for_operator(value=f.value, op=f.operator)
 
-            filter_type = f["type"]
-            # values[f_k] = sessions.__get_sql_value_multiple(f["value"])
+            op = sh.get_sql_operator(f.operator)
+
+            filter_type = f.type
             f_k = f"f_value{i}"
             values = {**values,
-                      **sessions._multiple_values(helper.values_for_operator(value=f["value"], op=f["operator"]),
-                                                  value_key=f_k)}
-            if filter_type == schemas.FilterType.user_browser:
-                # op = sessions.__get_sql_operator_multiple(f["operator"])
+                      **sh.multi_values(f.value, value_key=f_k)}
+            is_not = False
+            if sh.is_negation_operator(f.operator):
+                is_not = True
+            if filter_type == schemas.FilterType.USER_BROWSER:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.user_browser {op} %({f_k})s', f["value"], value_key=f_k))
+                    sh.multi_conditions(f's.user_browser {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
 
-            elif filter_type in [schemas.FilterType.user_os, schemas.FilterType.user_os_ios]:
-                # op = sessions.__get_sql_operator_multiple(f["operator"])
+            elif filter_type in [schemas.FilterType.USER_OS, schemas.FilterType.USER_OS_MOBILE]:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.user_os {op} %({f_k})s', f["value"], value_key=f_k))
+                    sh.multi_conditions(f's.user_os {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
 
-            elif filter_type in [schemas.FilterType.user_device, schemas.FilterType.user_device_ios]:
-                # op = sessions.__get_sql_operator_multiple(f["operator"])
+            elif filter_type in [schemas.FilterType.USER_DEVICE, schemas.FilterType.USER_DEVICE_MOBILE]:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.user_device {op} %({f_k})s', f["value"], value_key=f_k))
+                    sh.multi_conditions(f's.user_device {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
 
-            elif filter_type in [schemas.FilterType.user_country, schemas.FilterType.user_country_ios]:
-                # op = sessions.__get_sql_operator_multiple(f["operator"])
+            elif filter_type in [schemas.FilterType.USER_COUNTRY, schemas.FilterType.USER_COUNTRY_MOBILE]:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.user_country {op} %({f_k})s', f["value"], value_key=f_k))
-            elif filter_type == schemas.FilterType.duration:
-                if len(f["value"]) > 0 and f["value"][0] is not None:
+                    sh.multi_conditions(f's.user_country {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+            elif filter_type == schemas.FilterType.DURATION:
+                if len(f.value) > 0 and f.value[0] is not None:
                     first_stage_extra_constraints.append(f's.duration >= %(minDuration)s')
-                    values["minDuration"] = f["value"][0]
-                if len(f["value"]) > 1 and f["value"][1] is not None and int(f["value"][1]) > 0:
+                    values["minDuration"] = f.value[0]
+                if len(f["value"]) > 1 and f.value[1] is not None and int(f.value[1]) > 0:
                     first_stage_extra_constraints.append('s.duration <= %(maxDuration)s')
-                    values["maxDuration"] = f["value"][1]
-            elif filter_type == schemas.FilterType.referrer:
+                    values["maxDuration"] = f.value[1]
+            elif filter_type == schemas.FilterType.REFERRER:
                 # events_query_part = events_query_part + f"INNER JOIN events.pages AS p USING(session_id)"
-                filter_extra_from = [f"INNER JOIN {events.event_type.LOCATION.table} AS p USING(session_id)"]
-                # op = sessions.__get_sql_operator_multiple(f["operator"])
+                filter_extra_from = [f"INNER JOIN {events.EventType.LOCATION.table} AS p USING(session_id)"]
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f"p.base_referrer {op} %({f_k})s", f["value"], value_key=f_k))
-            elif filter_type == events.event_type.METADATA.ui_type:
+                    sh.multi_conditions(f"p.base_referrer {op} %({f_k})s", f.value, is_not=is_not, value_key=f_k))
+            elif filter_type == events.EventType.METADATA.ui_type:
                 if meta_keys is None:
                     meta_keys = metadata.get(project_id=project_id)
                     meta_keys = {m["key"]: m["index"] for m in meta_keys}
-                # op = sessions.__get_sql_operator(f["operator"])
-                if f.get("key") in meta_keys.keys():
+                if f.source in meta_keys.keys():
                     first_stage_extra_constraints.append(
-                        sessions._multiple_conditions(
-                            f's.{metadata.index_to_colname(meta_keys[f["key"]])} {op} %({f_k})s', f["value"],
-                            value_key=f_k))
+                        sh.multi_conditions(
+                            f's.{metadata.index_to_colname(meta_keys[f.source])} {op} %({f_k})s', f.value,
+                            is_not=is_not, value_key=f_k))
                     # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
-            elif filter_type in [schemas.FilterType.user_id, schemas.FilterType.user_id_ios]:
-                # op = sessions.__get_sql_operator(f["operator"])
+            elif filter_type in [schemas.FilterType.USER_ID, schemas.FilterType.USER_ID_MOBILE]:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.user_id {op} %({f_k})s', f["value"], value_key=f_k))
+                    sh.multi_conditions(f's.user_id {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
                 # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
-            elif filter_type in [schemas.FilterType.user_anonymous_id,
-                                 schemas.FilterType.user_anonymous_id_ios]:
-                # op = sessions.__get_sql_operator(f["operator"])
+            elif filter_type in [schemas.FilterType.USER_ANONYMOUS_ID,
+                                 schemas.FilterType.USER_ANONYMOUS_ID_MOBILE]:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.user_anonymous_id {op} %({f_k})s', f["value"], value_key=f_k))
+                    sh.multi_conditions(f's.user_anonymous_id {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
                 # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
-            elif filter_type in [schemas.FilterType.rev_id, schemas.FilterType.rev_id_ios]:
-                # op = sessions.__get_sql_operator(f["operator"])
+            elif filter_type in [schemas.FilterType.REV_ID, schemas.FilterType.REV_ID_MOBILE]:
                 first_stage_extra_constraints.append(
-                    sessions._multiple_conditions(f's.rev_id {op} %({f_k})s', f["value"], value_key=f_k))
+                    sh.multi_conditions(f's.rev_id {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
                 # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
     i = -1
     for s in stages:
 
-        if s.get("operator") is None:
-            s["operator"] = "is"
+        if s.operator is None:
+            s.operator = schemas.SearchEventOperator.IS
 
-        if not isinstance(s["value"], list):
-            s["value"] = [s["value"]]
-        is_any = sessions._isAny_opreator(s["operator"])
-        if not is_any and isinstance(s["value"], list) and len(s["value"]) == 0:
+        if not isinstance(s.value, list):
+            s.value = [s.value]
+        is_any = sh.isAny_opreator(s.operator)
+        if not is_any and isinstance(s.value, list) and len(s.value) == 0:
             continue
         i += 1
         if i == 0:
             extra_from = filter_extra_from + ["INNER JOIN public.sessions AS s USING (session_id)"]
         else:
             extra_from = []
-        op = sessions.__get_sql_operator(s["operator"])
-        event_type = s["type"].upper()
-        if event_type == events.event_type.CLICK.ui_type:
-            next_table = events.event_type.CLICK.table
-            next_col_name = events.event_type.CLICK.column
-        elif event_type == events.event_type.INPUT.ui_type:
-            next_table = events.event_type.INPUT.table
-            next_col_name = events.event_type.INPUT.column
-        elif event_type == events.event_type.LOCATION.ui_type:
-            next_table = events.event_type.LOCATION.table
-            next_col_name = events.event_type.LOCATION.column
-        elif event_type == events.event_type.CUSTOM.ui_type:
-            next_table = events.event_type.CUSTOM.table
-            next_col_name = events.event_type.CUSTOM.column
+        op = sh.get_sql_operator(s.operator)
+        # event_type = s["type"].upper()
+        event_type = s.type
+        if event_type == events.EventType.CLICK.ui_type:
+            next_table = events.EventType.CLICK.table
+            next_col_name = events.EventType.CLICK.column
+        elif event_type == events.EventType.INPUT.ui_type:
+            next_table = events.EventType.INPUT.table
+            next_col_name = events.EventType.INPUT.column
+        elif event_type == events.EventType.LOCATION.ui_type:
+            next_table = events.EventType.LOCATION.table
+            next_col_name = events.EventType.LOCATION.column
+        elif event_type == events.EventType.CUSTOM.ui_type:
+            next_table = events.EventType.CUSTOM.table
+            next_col_name = events.EventType.CUSTOM.column
         #     IOS --------------
-        elif event_type == events.event_type.CLICK_IOS.ui_type:
-            next_table = events.event_type.CLICK_IOS.table
-            next_col_name = events.event_type.CLICK_IOS.column
-        elif event_type == events.event_type.INPUT_IOS.ui_type:
-            next_table = events.event_type.INPUT_IOS.table
-            next_col_name = events.event_type.INPUT_IOS.column
-        elif event_type == events.event_type.VIEW_IOS.ui_type:
-            next_table = events.event_type.VIEW_IOS.table
-            next_col_name = events.event_type.VIEW_IOS.column
-        elif event_type == events.event_type.CUSTOM_IOS.ui_type:
-            next_table = events.event_type.CUSTOM_IOS.table
-            next_col_name = events.event_type.CUSTOM_IOS.column
+        elif event_type == events.EventType.CLICK_MOBILE.ui_type:
+            next_table = events.EventType.CLICK_MOBILE.table
+            next_col_name = events.EventType.CLICK_MOBILE.column
+        elif event_type == events.EventType.INPUT_MOBILE.ui_type:
+            next_table = events.EventType.INPUT_MOBILE.table
+            next_col_name = events.EventType.INPUT_MOBILE.column
+        elif event_type == events.EventType.VIEW_MOBILE.ui_type:
+            next_table = events.EventType.VIEW_MOBILE.table
+            next_col_name = events.EventType.VIEW_MOBILE.column
+        elif event_type == events.EventType.CUSTOM_MOBILE.ui_type:
+            next_table = events.EventType.CUSTOM_MOBILE.table
+            next_col_name = events.EventType.CUSTOM_MOBILE.column
         else:
-            print("=================UNDEFINED")
+            logger.warning(f"=================UNDEFINED:{event_type}")
             continue
 
-        values = {**values, **sessions._multiple_values(helper.values_for_operator(value=s["value"], op=s["operator"]),
-                                                        value_key=f"value{i + 1}")}
-        if sessions.__is_negation_operator(op) and i > 0:
-            op = sessions.__reverse_sql_operator(op)
+        values = {**values, **sh.multi_values(helper.values_for_operator(value=s.value, op=s.operator),
+                                              value_key=f"value{i + 1}")}
+        if sh.is_negation_operator(s.operator) and i > 0:
+            op = sh.reverse_sql_operator(op)
             main_condition = "left_not.session_id ISNULL"
             extra_from.append(f"""LEFT JOIN LATERAL (SELECT session_id 
                                                         FROM {next_table} AS s_main 
-                                                        WHERE s_main.{next_col_name} {op} %(value{i + 1})s
+                                                        WHERE 
+                                                        {sh.multi_conditions(f"s_main.{next_col_name} {op} %(value{i + 1})s",
+                                                                             values=s.value, value_key=f"value{i + 1}")}
                                                         AND s_main.timestamp >= T{i}.stage{i}_timestamp
                                                         AND s_main.session_id = T1.session_id) AS left_not ON (TRUE)""")
         else:
             if is_any:
                 main_condition = "TRUE"
             else:
-                main_condition = sessions._multiple_conditions(f"main.{next_col_name} {op} %(value{i + 1})s",
-                                                               values=s["value"], value_key=f"value{i + 1}")
+                main_condition = sh.multi_conditions(f"main.{next_col_name} {op} %(value{i + 1})s",
+                                                     values=s.value, value_key=f"value{i + 1}")
         n_stages_query.append(f""" 
         (SELECT main.session_id, 
                 {"MIN(main.timestamp)" if i + 1 < len(stages) else "MAX(main.timestamp)"} AS stage{i + 1}_timestamp
@@ -198,7 +192,7 @@ def get_stages_and_events(filter_d, project_id) -> List[RealDictRow]:
     n_stages_query += ") AS stages_t"
 
     n_stages_query = f"""
-    SELECT stages_and_issues_t.*, sessions.user_uuid
+    SELECT stages_and_issues_t.*, sessions.user_uuid, sessions.user_id
     FROM (
         SELECT * FROM (
              SELECT T1.session_id, {",".join([f"stage{i + 1}_timestamp" for i in range(n_stages)])}
@@ -220,25 +214,249 @@ def get_stages_and_events(filter_d, project_id) -> List[RealDictRow]:
     ) AS stages_and_issues_t INNER JOIN sessions USING(session_id);
     """
 
-    #  LIMIT 10000
-    params = {"project_id": project_id, "startTimestamp": filter_d["startDate"], "endTimestamp": filter_d["endDate"],
+    params = {"project_id": project_id, "startTimestamp": filter_d.startTimestamp,
+              "endTimestamp": filter_d.endTimestamp,
               "issueTypes": tuple(filter_issues), **values}
     with pg_client.PostgresClient() as cur:
         query = cur.mogrify(n_stages_query, params)
-        # print("---------------------------------------------------")
-        # print(query)
-        # print("---------------------------------------------------")
+        logger.debug("---------------------------------------------------")
+        logger.debug(query)
+        logger.debug("---------------------------------------------------")
         try:
             cur.execute(query)
             rows = cur.fetchall()
         except Exception as err:
-            print("--------- FUNNEL SEARCH QUERY EXCEPTION -----------")
-            print(query.decode('UTF-8'))
-            print("--------- PAYLOAD -----------")
-            print(filter_d)
-            print("--------------------")
+            logger.warning("--------- FUNNEL SEARCH QUERY EXCEPTION -----------")
+            logger.warning(query.decode('UTF-8'))
+            logger.warning("--------- PAYLOAD -----------")
+            logger.warning(filter_d.model_dump_json())
+            logger.warning("--------------------")
             raise err
+    for r in rows:
+        if r["user_id"] == "":
+            r["user_id"] = None
     return rows
+
+
+def get_simple_funnel(filter_d: schemas.CardSeriesFilterSchema, project: schemas.ProjectContext,
+                      metric_format: schemas.MetricExtendedFormatType) -> List[RealDictRow]:
+    """
+    Add minimal timestamp
+    :param filter_d: dict contains events&filters&...
+    :return:
+    """
+
+    stages: List[schemas.SessionSearchEventSchema2] = filter_d.events
+    filters: List[schemas.SessionSearchFilterSchema] = filter_d.filters
+
+    stage_constraints = ["main.timestamp <= %(endTimestamp)s"]
+    first_stage_extra_constraints = ["s.project_id=%(project_id)s", "s.start_ts >= %(startTimestamp)s",
+                                     "s.start_ts <= %(endTimestamp)s"]
+    if metric_format == schemas.MetricExtendedFormatType.SESSION_COUNT:
+        count_value = '1'
+    else:
+        count_value = 'user_id'
+        first_stage_extra_constraints.append("user_id IS NOT NULL")
+        first_stage_extra_constraints.append("user_id !=''")
+
+    filter_extra_from = []
+    n_stages_query = []
+    values = {}
+    if len(filters) > 0:
+        meta_keys = None
+        for i, f in enumerate(filters):
+            if len(f.value) == 0:
+                continue
+            f.value = helper.values_for_operator(value=f.value, op=f.operator)
+
+            op = sh.get_sql_operator(f.operator)
+
+            filter_type = f.type
+            f_k = f"f_value{i}"
+            values = {**values,
+                      **sh.multi_values(f.value, value_key=f_k)}
+            is_not = False
+            if sh.is_negation_operator(f.operator):
+                is_not = True
+            if filter_type == schemas.FilterType.USER_BROWSER:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.user_browser {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+
+            elif filter_type in [schemas.FilterType.USER_OS, schemas.FilterType.USER_OS_MOBILE]:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.user_os {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+
+            elif filter_type in [schemas.FilterType.USER_DEVICE, schemas.FilterType.USER_DEVICE_MOBILE]:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.user_device {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+
+            elif filter_type in [schemas.FilterType.USER_COUNTRY, schemas.FilterType.USER_COUNTRY_MOBILE]:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.user_country {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+            elif filter_type == schemas.FilterType.DURATION:
+                if len(f.value) > 0 and f.value[0] is not None:
+                    first_stage_extra_constraints.append(f's.duration >= %(minDuration)s')
+                    values["minDuration"] = f.value[0]
+                if len(f["value"]) > 1 and f.value[1] is not None and int(f.value[1]) > 0:
+                    first_stage_extra_constraints.append('s.duration <= %(maxDuration)s')
+                    values["maxDuration"] = f.value[1]
+            elif filter_type == schemas.FilterType.REFERRER:
+                # events_query_part = events_query_part + f"INNER JOIN events.pages AS p USING(session_id)"
+                filter_extra_from = [f"INNER JOIN {events.EventType.LOCATION.table} AS p USING(session_id)"]
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f"p.base_referrer {op} %({f_k})s", f.value, is_not=is_not, value_key=f_k))
+            elif filter_type == events.EventType.METADATA.ui_type:
+                if meta_keys is None:
+                    meta_keys = metadata.get(project_id=project.project_id)
+                    meta_keys = {m["key"]: m["index"] for m in meta_keys}
+                if f.source in meta_keys.keys():
+                    first_stage_extra_constraints.append(
+                        sh.multi_conditions(
+                            f's.{metadata.index_to_colname(meta_keys[f.source])} {op} %({f_k})s', f.value,
+                            is_not=is_not, value_key=f_k))
+                    # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
+            elif filter_type in [schemas.FilterType.USER_ID, schemas.FilterType.USER_ID_MOBILE]:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.user_id {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+                # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
+            elif filter_type in [schemas.FilterType.USER_ANONYMOUS_ID,
+                                 schemas.FilterType.USER_ANONYMOUS_ID_MOBILE]:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.user_anonymous_id {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+                # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
+            elif filter_type in [schemas.FilterType.REV_ID, schemas.FilterType.REV_ID_MOBILE]:
+                first_stage_extra_constraints.append(
+                    sh.multi_conditions(f's.rev_id {op} %({f_k})s', f.value, is_not=is_not, value_key=f_k))
+                # values[f_k] = helper.string_to_sql_like_with_op(f["value"][0], op)
+    i = -1
+    for s in stages:
+
+        if s.operator is None:
+            s.operator = schemas.SearchEventOperator.IS
+
+        if not isinstance(s.value, list):
+            s.value = [s.value]
+        is_any = sh.isAny_opreator(s.operator)
+        if not is_any and isinstance(s.value, list) and len(s.value) == 0:
+            continue
+        i += 1
+        if i == 0:
+            extra_from = filter_extra_from + ["INNER JOIN public.sessions AS s USING (session_id)"]
+        else:
+            extra_from = []
+        op = sh.get_sql_operator(s.operator)
+        # event_type = s["type"].upper()
+        event_type = s.type
+        if event_type == events.EventType.CLICK.ui_type:
+            next_table = events.EventType.CLICK.table
+            next_col_name = events.EventType.CLICK.column
+        elif event_type == events.EventType.INPUT.ui_type:
+            next_table = events.EventType.INPUT.table
+            next_col_name = events.EventType.INPUT.column
+        elif event_type == events.EventType.LOCATION.ui_type:
+            next_table = events.EventType.LOCATION.table
+            next_col_name = events.EventType.LOCATION.column
+        elif event_type == events.EventType.CUSTOM.ui_type:
+            next_table = events.EventType.CUSTOM.table
+            next_col_name = events.EventType.CUSTOM.column
+        #     IOS --------------
+        elif event_type == events.EventType.CLICK_MOBILE.ui_type:
+            next_table = events.EventType.CLICK_MOBILE.table
+            next_col_name = events.EventType.CLICK_MOBILE.column
+        elif event_type == events.EventType.INPUT_MOBILE.ui_type:
+            next_table = events.EventType.INPUT_MOBILE.table
+            next_col_name = events.EventType.INPUT_MOBILE.column
+        elif event_type == events.EventType.VIEW_MOBILE.ui_type:
+            next_table = events.EventType.VIEW_MOBILE.table
+            next_col_name = events.EventType.VIEW_MOBILE.column
+        elif event_type == events.EventType.CUSTOM_MOBILE.ui_type:
+            next_table = events.EventType.CUSTOM_MOBILE.table
+            next_col_name = events.EventType.CUSTOM_MOBILE.column
+        else:
+            logger.warning(f"=================UNDEFINED:{event_type}")
+            continue
+
+        values = {**values, **sh.multi_values(helper.values_for_operator(value=s.value, op=s.operator),
+                                              value_key=f"value{i + 1}")}
+        if sh.is_negation_operator(s.operator) and i > 0:
+            op = sh.reverse_sql_operator(op)
+            main_condition = "left_not.session_id ISNULL"
+            extra_from.append(f"""LEFT JOIN LATERAL (SELECT session_id 
+                                                        FROM {next_table} AS s_main 
+                                                        WHERE 
+                                                        {sh.multi_conditions(f"s_main.{next_col_name} {op} %(value{i + 1})s",
+                                                                             values=s.value, value_key=f"value{i + 1}")}
+                                                        AND s_main.timestamp >= T{i}.stage{i}_timestamp
+                                                        AND s_main.session_id = T1.session_id) AS left_not ON (TRUE)""")
+        else:
+            if is_any:
+                main_condition = "TRUE"
+            else:
+                main_condition = sh.multi_conditions(f"main.{next_col_name} {op} %(value{i + 1})s",
+                                                     values=s.value, value_key=f"value{i + 1}")
+        n_stages_query.append(f""" 
+        (SELECT main.session_id, 
+                {"MIN(main.timestamp)" if i + 1 < len(stages) else "MAX(main.timestamp)"} AS stage{i + 1}_timestamp,
+                {count_value} AS c
+        FROM {next_table} AS main {" ".join(extra_from)}        
+        WHERE main.timestamp >= {f"T{i}.stage{i}_timestamp" if i > 0 else "%(startTimestamp)s"}
+            {f"AND main.session_id=T1.session_id" if i > 0 else ""}
+            AND {main_condition}
+            {(" AND " + " AND ".join(stage_constraints)) if len(stage_constraints) > 0 else ""}
+            {(" AND " + " AND ".join(first_stage_extra_constraints)) if len(first_stage_extra_constraints) > 0 and i == 0 else ""}
+        GROUP BY main.session_id,{count_value})
+        AS T{i + 1} {"ON (TRUE)" if i > 0 else ""}
+        """)
+        count_value = '1'
+    n_stages = len(n_stages_query)
+    if n_stages == 0:
+        return []
+    n_stages_query = " LEFT JOIN LATERAL ".join(n_stages_query)
+
+    n_stages_query = f"""
+             SELECT {",".join([f"COUNT(T{i + 1}.c) AS stage{i + 1}" for i in range(n_stages)])}
+              FROM {n_stages_query};
+    """
+
+    params = {"project_id": project.project_id, "startTimestamp": filter_d.startTimestamp,
+              "endTimestamp": filter_d.endTimestamp, **values}
+    with pg_client.PostgresClient() as cur:
+        query = cur.mogrify(n_stages_query, params)
+        logger.debug("---------------------------------------------------")
+        logger.debug(query)
+        logger.debug("---------------------------------------------------")
+        try:
+            cur.execute(query)
+            row = cur.fetchone()
+        except Exception as err:
+            logger.warning("--------- SIMPLE FUNNEL SEARCH QUERY EXCEPTION -----------")
+            logger.warning(query.decode('UTF-8'))
+            logger.warning("--------- PAYLOAD -----------")
+            logger.warning(filter_d.model_dump_json())
+            logger.warning("--------------------")
+            raise err
+
+    stages_list = []
+    for i, stage in enumerate(stages):
+        count = row[f"stage{i + 1}"]
+        drop = None
+        if i != 0:
+            base_count = row[f"stage{i}"]
+            if base_count == 0:
+                drop = 0
+            elif base_count > 0:
+                drop = int(100 * (base_count - count) / base_count)
+
+        stages_list.append(
+            {"value": stage.value,
+             "type": stage.type,
+             "operator": stage.operator,
+             "dropPct": drop,
+             "count": count
+             }
+        )
+
+    return stages_list
 
 
 def pearson_corr(x: list, y: list):
@@ -256,7 +474,7 @@ def pearson_corr(x: list, y: list):
         return None, None, False
 
     if n == 2:
-        return math.copysign(1, x[1] - x[0]) * math.copysign(1, y[1] - y[0]), 1.0
+        return math.copysign(1, x[1] - x[0]) * math.copysign(1, y[1] - y[0]), 1.0, True
 
     xmean = sum(x) / len(x)
     ymean = sum(y) / len(y)
@@ -319,7 +537,7 @@ def get_transitions_and_issues_of_each_type(rows: List[RealDictRow], all_issues,
 
     transitions ::: if transited from the first stage to the last - 1
                     else - 0
-    errors      ::: a dictionary where the keys are all unique issues (currently context-wise)
+    errors      ::: a dictionary WHERE the keys are all unique issues (currently context-wise)
                     the values are lists
                     if an issue happened between the first stage to the last - 1
                     else - 0
@@ -423,42 +641,48 @@ def count_sessions(rows, n_stages):
     return session_counts
 
 
-def count_users(rows, n_stages):
+def count_users(rows, n_stages, user_key="user_uuid"):
     users_in_stages = {i: set() for i in range(1, n_stages + 1)}
     for row in rows:
         for i in range(1, n_stages + 1):
-            if row[f"stage{i}_timestamp"] is not None:
-                users_in_stages[i].add(row["user_uuid"])
+            if row[f"stage{i}_timestamp"] is not None and row[user_key] is not None:
+                users_in_stages[i].add(row[user_key])
 
     users_count = {i: len(users_in_stages[i]) for i in range(1, n_stages + 1)}
     return users_count
 
 
-def get_stages(stages, rows):
+def get_stages(stages, rows,
+               metric_format: schemas.MetricExtendedFormatType = schemas.MetricExtendedFormatType.SESSION_COUNT):
     n_stages = len(stages)
-    session_counts = count_sessions(rows, n_stages)
-    users_counts = count_users(rows, n_stages)
+    if metric_format == schemas.MetricExtendedFormatType.SESSION_COUNT:
+        base_counts = count_sessions(rows, n_stages)
+    else:
+        base_counts = count_users(rows, n_stages, user_key="user_id")
 
     stages_list = []
     for i, stage in enumerate(stages):
 
         drop = None
         if i != 0:
-            if session_counts[i] == 0:
+            if base_counts[i] == 0:
                 drop = 0
-            elif session_counts[i] > 0:
-                drop = int(100 * (session_counts[i] - session_counts[i + 1]) / session_counts[i])
+            elif base_counts[i] > 0:
+                drop = int(100 * (base_counts[i] - base_counts[i + 1]) / base_counts[i])
 
         stages_list.append(
-            {"value": stage["value"],
-             "type": stage["type"],
-             "operator": stage["operator"],
-             "sessionsCount": session_counts[i + 1],
+            {"value": stage.value,
+             "type": stage.type,
+             "operator": stage.operator,
              "drop_pct": drop,
-             "usersCount": users_counts[i + 1],
              "dropDueToIssues": 0
              }
         )
+        if metric_format == schemas.MetricExtendedFormatType.SESSION_COUNT:
+            stages_list[-1]["sessionsCount"] = base_counts[i + 1]
+        else:
+            stages_list[-1]["usersCount"] = base_counts[i + 1]
+
     return stages_list
 
 
@@ -479,7 +703,8 @@ def get_issues(stages, rows, first_stage=None, last_stage=None, drop_only=False)
     if last_stage is None:
         last_stage = n_stages
     if last_stage > n_stages:
-        print("The number of the last stage provided is greater than the number of stages. Using n_stages instead")
+        logger.debug(
+            "The number of the last stage provided is greater than the number of stages. Using n_stages instead")
         last_stage = n_stages
 
     n_critical_issues = 0
@@ -523,7 +748,7 @@ def get_issues(stages, rows, first_stage=None, last_stage=None, drop_only=False)
             "type": all_issues[issue_id]["issue_type"],
             "title": helper.get_issue_title(all_issues[issue_id]["issue_type"]),
             "affected_sessions": affected_sessions[issue_id],
-            "unaffected_sessions": session_counts[1] - affected_sessions[issue_id],
+            "unaffected_sessions": session_counts[1] - affected_sessions.get(issue_id, 0),
             "lost_conversions": lost_conversions,
             "affected_users": affected_users_dict[issue_id],
             "conversion_impact": round(r * 100),
@@ -540,50 +765,35 @@ def get_issues(stages, rows, first_stage=None, last_stage=None, drop_only=False)
     return n_critical_issues, issues_dict, total_drop_due_to_issues
 
 
-def get_top_insights(filter_d, project_id):
+def get_top_insights(filter_d: schemas.CardSeriesFilterSchema, project_id,
+                     metric_format: schemas.MetricExtendedFormatType):
     output = []
-    stages = filter_d.get("events", [])
-    # TODO: handle 1 stage alone
-    if len(stages) == 0:
-        print("no stages found")
-        return output, 0
-    elif len(stages) == 1:
-        # TODO: count sessions, and users for single stage
-        output = [{
-            "type": stages[0]["type"],
-            "value": stages[0]["value"],
-            "dropPercentage": None,
-            "operator": stages[0]["operator"],
-            "sessionsCount": 0,
-            "dropPct": 0,
-            "usersCount": 0,
-            "dropDueToIssues": 0
+    stages = filter_d.events
 
-        }]
-        counts = sessions.search_sessions(data=schemas.SessionsSearchCountSchema.parse_obj(filter_d),
-                                          project_id=project_id, user_id=None, count_only=True)
-        output[0]["sessionsCount"] = counts["countSessions"]
-        output[0]["usersCount"] = counts["countUsers"]
+    if len(stages) == 0:
+        logger.debug("no stages found")
         return output, 0
+
     # The result of the multi-stage query
     rows = get_stages_and_events(filter_d=filter_d, project_id=project_id)
-    if len(rows) == 0:
-        return get_stages(stages, []), 0
     # Obtain the first part of the output
-    stages_list = get_stages(stages, rows)
+    stages_list = get_stages(stages, rows, metric_format=metric_format)
+    if len(rows) == 0:
+        return stages_list, 0
+
     # Obtain the second part of the output
-    total_drop_due_to_issues = get_issues(stages, rows, first_stage=filter_d.get("firstStage"),
-                                          last_stage=filter_d.get("lastStage"), drop_only=True)
+    total_drop_due_to_issues = get_issues(stages, rows,
+                                          first_stage=1,
+                                          last_stage=len(filter_d.events),
+                                          drop_only=True)
     return stages_list, total_drop_due_to_issues
 
 
-def get_issues_list(filter_d, project_id, first_stage=None, last_stage=None):
+def get_issues_list(filter_d: schemas.CardSeriesFilterSchema, project_id, first_stage=None, last_stage=None):
     output = dict({"total_drop_due_to_issues": 0, "critical_issues_count": 0, "significant": [], "insignificant": []})
-    stages = filter_d.get("events", [])
+    stages = filter_d.events
     # The result of the multi-stage query
     rows = get_stages_and_events(filter_d=filter_d, project_id=project_id)
-    # print(json.dumps(rows[0],indent=4))
-    # return
     if len(rows) == 0:
         return output
         # Obtain the second part of the output
@@ -592,46 +802,4 @@ def get_issues_list(filter_d, project_id, first_stage=None, last_stage=None):
     output['total_drop_due_to_issues'] = total_drop_due_to_issues
     # output['critical_issues_count'] = n_critical_issues
     output = {**output, **issues_dict}
-    return output
-
-
-def get_overview(filter_d, project_id, first_stage=None, last_stage=None):
-    output = dict()
-    stages = filter_d["events"]
-    # TODO: handle 1 stage alone
-    if len(stages) == 0:
-        return {"stages": [],
-                "criticalIssuesCount": 0}
-    elif len(stages) == 1:
-        # TODO: count sessions, and users for single stage
-        output["stages"] = [{
-            "type": stages[0]["type"],
-            "value": stages[0]["value"],
-            "sessionsCount": None,
-            "dropPercentage": None,
-            "usersCount": None
-        }]
-        return output
-    # The result of the multi-stage query
-    rows = get_stages_and_events(filter_d=filter_d, project_id=project_id)
-    if len(rows) == 0:
-        # PS: not sure what to return if rows are empty
-        output["stages"] = [{
-            "type": stages[0]["type"],
-            "value": stages[0]["value"],
-            "sessionsCount": None,
-            "dropPercentage": None,
-            "usersCount": None
-        }]
-        output['criticalIssuesCount'] = 0
-        return output
-    # Obtain the first part of the output
-    stages_list = get_stages(stages, rows)
-
-    # Obtain the second part of the output
-    n_critical_issues, issues_dict, total_drop_due_to_issues = get_issues(stages, rows, first_stage=first_stage,
-                                                                          last_stage=last_stage)
-
-    output['stages'] = stages_list
-    output['criticalIssuesCount'] = n_critical_issues
     return output

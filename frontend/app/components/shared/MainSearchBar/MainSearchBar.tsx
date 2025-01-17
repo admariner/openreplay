@@ -1,52 +1,58 @@
 import React from 'react';
 import SessionSearchField from 'Shared/SessionSearchField';
+import AiSessionSearchField from 'Shared/SessionSearchField/AiSessionSearchField';
 import SavedSearch from 'Shared/SavedSearch';
-import { Button } from 'UI';
-// import { clearSearch } from 'Duck/search';
-import { connect } from 'react-redux';
-import { edit as editFilter, addFilterByKeyAndValue, clearSearch, fetchFilterSearch } from 'Duck/search';
+import { Button } from 'antd';
+import TagList from './components/TagList';
+import { useStore } from 'App/mstore';
+import { observer } from 'mobx-react-lite';
 
 interface Props {
-    clearSearch: () => void;
-    appliedFilter: any;
-    optionsReady: boolean;
-    editFilter: any,
-    addFilterByKeyAndValue: any,
-    fetchFilterSearch: any,
+
 }
+
 const MainSearchBar = (props: Props) => {
-  const { appliedFilter  } = props;
-  const hasFilters = appliedFilter && appliedFilter.filters && appliedFilter.filters.size > 0;
+  const { searchStore, projectsStore } = useStore();
+  const appliedFilter = searchStore.instance;
+  const savedSearch = searchStore.savedSearch;
+  const projectId = projectsStore.siteId;
+  const currSite = React.useRef(projectId);
+  const hasFilters = appliedFilter && appliedFilter.filters && appliedFilter.filters.length > 0;
+  const hasSavedSearch = savedSearch && savedSearch.exists();
+  const hasSearch = hasFilters || hasSavedSearch;
+
+  // @ts-ignore
+  const originStr = window.env.ORIGIN || window.location.origin;
+  const isSaas = /app\.openreplay\.com/.test(originStr);
+
+  React.useEffect(() => {
+    if (projectId !== currSite.current && currSite.current !== undefined) {
+      console.debug('clearing filters due to project change');
+      searchStore.clearSearch();
+      currSite.current = projectId;
+    }
+  }, [projectId]);
   return (
-    <div className="flex items-center">
-        <div style={{ width: "60%", marginRight: "10px"}}>
-            <SessionSearchField
-                editFilter={props.editFilter}
-                addFilterByKeyAndValue={props.addFilterByKeyAndValue}
-                clearSearch={props.clearSearch}
-                fetchFilterSearch={props.fetchFilterSearch}
-            />
-        </div>
-        <div className="flex items-center" style={{ width: "40%"}}>
+    <div className="flex items-center flex-wrap">
+      <div style={{ flex: 3, marginRight: '10px' }}>
+        {isSaas ? <AiSessionSearchField /> : <SessionSearchField />}
+      </div>
+      <div className="flex items-center gap-2 my-2 xl:my-0" style={{ flex: 2 }}>
+        <TagList />
         <SavedSearch />
         <Button
-            variant="text-primary"
-            className="ml-auto font-medium"
-            disabled={!hasFilters}
-            onClick={() => props.clearSearch()}
+          // variant={hasSearch ? 'text-primary' : 'text'}
+          // className="ml-auto font-medium"
+          type="link"
+          disabled={!hasSearch}
+          onClick={() => searchStore.clearSearch()}
+          className="ml-auto font-medium"
         >
-            Clear Search
+          Clear Search
         </Button>
-        </div>
+      </div>
     </div>
-  )
-}
-export default connect(state => ({
-    appliedFilter: state.getIn(['search', 'instance']),
-    optionsReady: state.getIn(['customFields', 'optionsReady'])
-}), {
-    clearSearch,
-    editFilter,
-    addFilterByKeyAndValue,
-    fetchFilterSearch
-})(MainSearchBar);
+  );
+};
+
+export default observer(MainSearchBar);

@@ -1,37 +1,12 @@
 package router
 
-type StartSessionRequest struct {
-	Token           string  `json:"token"`
-	UserUUID        *string `json:"userUUID"`
-	RevID           string  `json:"revID"`
-	Timestamp       int64   `json:"timestamp"`
-	TrackerVersion  string  `json:"trackerVersion"`
-	IsSnippet       bool    `json:"isSnippet"`
-	DeviceMemory    uint64  `json:"deviceMemory"`
-	JsHeapSizeLimit uint64  `json:"jsHeapSizeLimit"`
-	ProjectKey      *string `json:"projectKey"`
-	Reset           bool    `json:"reset"`
-	UserID          string  `json:"userID"`
-}
-
-type StartSessionResponse struct {
-	Timestamp       int64  `json:"timestamp"`
-	StartTimestamp  int64  `json:"startTimestamp"`
-	Delay           int64  `json:"delay"`
-	Token           string `json:"token"`
-	UserUUID        string `json:"userUUID"`
-	SessionID       string `json:"sessionID"`
-	ProjectID       string `json:"projectID"`
-	BeaconSizeLimit int64  `json:"beaconSizeLimit"`
-}
-
 type NotStartedRequest struct {
 	ProjectKey     *string `json:"projectKey"`
 	TrackerVersion string  `json:"trackerVersion"`
 	DoNotTrack     bool    `json:"DoNotTrack"`
 }
 
-type StartIOSSessionRequest struct {
+type StartMobileSessionRequest struct {
 	Token          string  `json:"token"`
 	ProjectKey     *string `json:"projectKey"`
 	TrackerVersion string  `json:"trackerVersion"`
@@ -39,13 +14,25 @@ type StartIOSSessionRequest struct {
 	UserUUID       *string `json:"userUUID"`
 	UserOSVersion  string  `json:"userOSVersion"`
 	UserDevice     string  `json:"userDevice"`
+	UserDeviceType string  `json:"userDeviceType"`
 	Timestamp      uint64  `json:"timestamp"`
+	Timezone       string  `json:"timezone"`
+	DeviceMemory   uint64  `json:"deviceMemory"`
+	DoNotRecord    bool    `json:"doNotRecord"` // start record session or not
+	Condition      string  `json:"condition"`   // condition for start record session
+	Platform       string  `json:"platform"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
 }
 
-type StartIOSSessionResponse struct {
-	Token           string   `json:"token"`
-	ImagesHashList  []string `json:"imagesHashList"`
-	UserUUID        string   `json:"userUUID"`
-	BeaconSizeLimit int64    `json:"beaconSizeLimit"`
-	SessionID       string   `json:"sessionID"`
+type StartMobileSessionResponse struct {
+	Token           string          `json:"token"`
+	ImagesHashList  []string        `json:"imagesHashList"`
+	UserUUID        string          `json:"userUUID"`
+	BeaconSizeLimit int64           `json:"beaconSizeLimit"`
+	SessionID       string          `json:"sessionID"`
+	ImageQuality    string          `json:"quality"`
+	FrameRate       int             `json:"fps"`
+	ProjectID       string          `json:"projectID"`
+	Features        map[string]bool `json:"features"`
 }

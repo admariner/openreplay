@@ -3,6 +3,7 @@ import random
 import re
 import string
 from typing import Union
+from urllib.parse import urlparse
 
 from decouple import config
 
@@ -10,15 +11,11 @@ import schemas
 from chalicelib.utils.TimeUTC import TimeUTC
 
 
-def get_stage_name():
-    return "OpenReplay"
-
-
 def random_string(length=36):
     return "".join(random.choices(string.hexdigits, k=length))
 
 
-def list_to_camel_case(items, flatten=False):
+def list_to_camel_case(items: list[dict], flatten: bool = False) -> list[dict]:
     for i in range(len(items)):
         if flatten:
             items[i] = flatten_nested_dicts(items[i])
@@ -98,7 +95,7 @@ TRACK_TIME = True
 
 def allow_captcha():
     return config("captcha_server", default=None) is not None and config("captcha_key", default=None) is not None \
-           and len(config("captcha_server")) > 0 and len(config("captcha_key")) > 0
+        and len(config("captcha_server")) > 0 and len(config("captcha_key")) > 0
 
 
 def string_to_sql_like(value):
@@ -142,15 +139,18 @@ def string_to_sql_like_with_op(value, op):
         return _value.replace("%", "%%")
 
 
-likable_operators = [schemas.SearchEventOperator._starts_with, schemas.SearchEventOperator._ends_with,
-                     schemas.SearchEventOperator._contains, schemas.SearchEventOperator._not_contains]
+likable_operators = [schemas.SearchEventOperator.STARTS_WITH, schemas.SearchEventOperator.ENDS_WITH,
+                     schemas.SearchEventOperator.CONTAINS, schemas.SearchEventOperator.NOT_CONTAINS,
+                     schemas.ClickEventExtraOperator.STARTS_WITH, schemas.ClickEventExtraOperator.ENDS_WITH,
+                     schemas.ClickEventExtraOperator.CONTAINS, schemas.ClickEventExtraOperator.NOT_CONTAINS]
 
 
-def is_likable(op: schemas.SearchEventOperator):
+def is_likable(op: Union[schemas.SearchEventOperator, schemas.ClickEventExtraOperator]):
     return op in likable_operators
 
 
-def values_for_operator(value: Union[str, list], op: schemas.SearchEventOperator):
+def values_for_operator(value: Union[str, list],
+                        op: Union[schemas.SearchEventOperator, schemas.ClickEventExtraOperator]):
     if not is_likable(op):
         return value
     if isinstance(value, list):
@@ -161,11 +161,12 @@ def values_for_operator(value: Union[str, list], op: schemas.SearchEventOperator
     else:
         if value is None:
             return value
-        if op == schemas.SearchEventOperator._starts_with:
+        if op in (schemas.SearchEventOperator.STARTS_WITH, schemas.ClickEventExtraOperator.STARTS_WITH):
             return f"{value}%"
-        elif op == schemas.SearchEventOperator._ends_with:
+        elif op in (schemas.SearchEventOperator.ENDS_WITH, schemas.ClickEventExtraOperator.ENDS_WITH):
             return f"%{value}"
-        elif op == schemas.SearchEventOperator._contains or op == schemas.SearchEventOperator._not_contains:
+        elif op in (schemas.SearchEventOperator.CONTAINS, schemas.SearchEventOperator.NOT_CONTAINS,
+                    schemas.ClickEventExtraOperator.CONTAINS, schemas.ClickEventExtraOperator.NOT_CONTAINS):
             return f"%{value}%"
     return value
 
@@ -248,7 +249,8 @@ def get_issue_title(issue_type):
             'custom': "Custom Event",
             'js_exception': "Error",
             'custom_event_error': "Custom Error",
-            'js_error': "Error"}.get(issue_type, issue_type)
+            'js_error': "Error",
+            "mouse_thrashing": "Mouse Thrashing"}.get(issue_type, issue_type)
 
 
 def __progress(old_val, new_val):
@@ -261,10 +263,6 @@ def __decimal_limit(value, limit):
     if value % factor == 0:
         return value // factor
     return value / factor
-
-
-def has_smtp():
-    return config("EMAIL_HOST") is not None and len(config("EMAIL_HOST")) > 0
 
 
 def old_search_payload_to_flat(values):
@@ -280,21 +278,22 @@ def old_search_payload_to_flat(values):
 
 def custom_alert_to_front(values):
     # to support frontend format for payload
-    if values.get("seriesId") is not None and values["query"]["left"] == schemas.AlertColumn.custom:
+    if values.get("seriesId") is not None and values["query"]["left"] == schemas.AlertColumn.CUSTOM:
         values["query"]["left"] = values["seriesId"]
+        values["seriesId"] = None
     return values
 
 
 def __time_value(row):
-    row["unit"] = schemas.TemplatePredefinedUnits.millisecond
+    row["unit"] = schemas.TemplatePredefinedUnits.MILLISECOND
     factor = 1
     if row["value"] > TimeUTC.MS_MINUTE:
         row["value"] = row["value"] / TimeUTC.MS_MINUTE
-        row["unit"] = schemas.TemplatePredefinedUnits.minute
+        row["unit"] = schemas.TemplatePredefinedUnits.MINUTE
         factor = TimeUTC.MS_MINUTE
     elif row["value"] > 1 * 1000:
         row["value"] = row["value"] / 1000
-        row["unit"] = schemas.TemplatePredefinedUnits.second
+        row["unit"] = schemas.TemplatePredefinedUnits.SECOND
         factor = 1000
 
     if "chart" in row and factor > 1:
@@ -304,3 +303,34 @@ def __time_value(row):
 
 def is_saml2_available():
     return config("hastSAML2", default=False, cast=bool)
+
+
+def get_domain():
+    _url = config("SITE_URL")
+    if not _url.startswith("http"):
+        _url = "http://" + _url
+    return '.'.join(urlparse(_url).netloc.split(".")[-2:])
+
+
+def obfuscate(text, keep_last: int = 4):
+    if text is None or not isinstance(text, str):
+        return text
+    if len(text) <= keep_last:
+        return "*" * len(text)
+    return "*" * (len(text) - keep_last) + text[-keep_last:]
+
+
+def cast_session_id_to_string(data):
+    if not isinstance(data, dict) and not isinstance(data, list):
+        return data
+    if isinstance(data, list):
+        for i, item in enumerate(data):
+            data[i] = cast_session_id_to_string(item)
+    elif isinstance(data, dict):
+        keys = data.keys()
+        if "sessionId" in keys:
+            data["sessionId"] = str(data["sessionId"])
+        else:
+            for key in keys:
+                data[key] = cast_session_id_to_string(data[key])
+    return data

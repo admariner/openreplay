@@ -1,14 +1,12 @@
-import { makeAutoObservable } from "mobx"
-import { notesService } from "App/services"
-import { Note, WriteNote, iTag, NotesFilter } from 'App/services/NotesService'
+import { makeAutoObservable } from "mobx";
 
-interface SessionNotes {
-  [sessionId: string]: Note[]
-}
+import { notesService } from "App/services";
+import { Note, NotesFilter, WriteNote, iTag } from 'App/services/NotesService';
+
 
 export default class NotesStore {
   notes: Note[] = []
-  sessionNotes: SessionNotes = {}
+  sessionNotes: Note[] = []
   loading: boolean
   page = 1
   pageSize = 10
@@ -16,9 +14,22 @@ export default class NotesStore {
   sort = 'createdAt'
   order: 'DESC' | 'ASC' = 'DESC'
   ownOnly = false
+  total = 0
 
   constructor() {
     makeAutoObservable(this)
+  }
+
+  setLoading(loading: boolean) {
+    this.loading = loading
+  }
+
+  setNotes(notes: Note[]) {
+    this.notes = notes
+  }
+
+  setTotal(total: number) {
+    this.total = total
   }
 
   async fetchNotes() {
@@ -32,64 +43,75 @@ export default class NotesStore {
       sharedOnly: false
     }
 
-    this.loading = true
+    this.setLoading(true)
     try {
-      const notes = await notesService.fetchNotes(filter)
-      this.notes = notes;
+      const { notes, count } = await notesService.fetchNotes(filter);
+      this.setNotes(notes);
+      this.setTotal(count)
       return notes;
     } catch (e) {
       console.error(e)
     } finally {
-      this.loading = false
+      this.setLoading(false)
     }
   }
 
+  setSessionNotes(notes: Note[]) {
+    this.sessionNotes = notes
+  }
+
+  appendNote(note: Note) {
+    this.sessionNotes = [note, ...this.sessionNotes]
+  }
+
   async fetchSessionNotes(sessionId: string) {
-    this.loading = true
+    this.setLoading(true)
     try {
       const notes = await notesService.getNotesBySessionId(sessionId)
-      this.sessionNotes[sessionId] = notes
+      notes.forEach(note => note.time = note.timestamp)
+      this.setSessionNotes(notes)
       return notes;
     } catch (e) {
       console.error(e)
     } finally {
-      this.loading = false
+      this.setLoading(false)
     }
   }
 
   async addNote(sessionId: string, note: WriteNote) {
-    this.loading = true
+    this.setLoading(true)
     try {
       const addedNote = await notesService.addNote(sessionId, note)
+      this.appendNote(addedNote)
       return addedNote
     } catch (e) {
       console.error(e)
     } finally {
-      this.loading = false
+      this.setLoading(false)
     }
   }
 
   async deleteNote(noteId: number) {
-    this.loading = true
+    this.setLoading(true)
     try {
       const deleted = await notesService.deleteNote(noteId)
       return deleted
     } catch (e) {
       console.error(e)
     } finally {
-      this.loading = false
+      this.setLoading(false)
     }
   }
 
   async updateNote(noteId: string, note: WriteNote) {
-    this.loading = true
+    this.setLoading(true)
     try {
       const updated = await notesService.updateNote(noteId, note)
       return updated
     } catch (e) {
       console.error(e)
     } finally {
-      this.loading = false
+      this.setLoading(false)
     }
   }
 
@@ -129,6 +151,15 @@ export default class NotesStore {
   async sendSlackNotification(noteId: string, webhook: string) {
     try {
       const resp = await notesService.sendSlackNotification(noteId, webhook)
+      return resp
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  async sendMsTeamsNotification(noteId: string, webhook: string) {
+    try {
+      const resp = await notesService.sendMsTeamsNotification(noteId, webhook)
       return resp
     } catch (e) {
       console.error(e)

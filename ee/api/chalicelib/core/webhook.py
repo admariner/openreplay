@@ -1,7 +1,10 @@
 import logging
+from typing import Optional
 
 import requests
+from fastapi import HTTPException, status
 
+import schemas
 from chalicelib.utils import pg_client, helper
 from chalicelib.utils.TimeUTC import TimeUTC
 
@@ -12,7 +15,7 @@ def get_by_id(webhook_id):
             cur.mogrify("""\
                     SELECT w.*
                     FROM public.webhooks AS w 
-                    where w.webhook_id =%(webhook_id)s AND deleted_at ISNULL;""",
+                    WHERE w.webhook_id =%(webhook_id)s AND deleted_at ISNULL;""",
                         {"webhook_id": webhook_id})
         )
         w = helper.dict_to_camel_case(cur.fetchone())
@@ -21,15 +24,14 @@ def get_by_id(webhook_id):
         return w
 
 
-def get(tenant_id, webhook_id):
+def get_webhook(tenant_id, webhook_id, webhook_type='webhook'):
     with pg_client.PostgresClient() as cur:
         cur.execute(
-            cur.mogrify("""\
-                    SELECT
-                          webhook_id AS integration_id, webhook_id AS id, w.*
-                    FROM public.webhooks AS w 
-                    where w.webhook_id =%(webhook_id)s AND w.tenant_id =%(tenant_id)s AND deleted_at ISNULL;""",
-                        {"webhook_id": webhook_id, "tenant_id": tenant_id})
+            cur.mogrify("""SELECT w.*
+                            FROM public.webhooks AS w 
+                            WHERE w.webhook_id =%(webhook_id)s AND w.tenant_id =%(tenant_id)s 
+                                 AND deleted_at ISNULL AND type=%(webhook_type)s;""",
+                        {"webhook_id": webhook_id, "webhook_type": webhook_type, "tenant_id": tenant_id})
         )
         w = helper.dict_to_camel_case(cur.fetchone())
         if w:
@@ -40,9 +42,7 @@ def get(tenant_id, webhook_id):
 def get_by_type(tenant_id, webhook_type):
     with pg_client.PostgresClient() as cur:
         cur.execute(
-            cur.mogrify("""\
-                    SELECT
-                           w.webhook_id AS integration_id, w.webhook_id AS id,w.webhook_id,w.endpoint,w.auth_header,w.type,w.index,w.name,w.created_at
+            cur.mogrify("""SELECT w.webhook_id,w.webhook_id,w.endpoint,w.auth_header,w.type,w.index,w.name,w.created_at
                     FROM public.webhooks AS w 
                     WHERE w.tenant_id =%(tenant_id)s 
                         AND w.type =%(type)s 
@@ -58,25 +58,15 @@ def get_by_type(tenant_id, webhook_type):
 def get_by_tenant(tenant_id, replace_none=False):
     with pg_client.PostgresClient() as cur:
         cur.execute(
-            cur.mogrify("""\
-                    SELECT
-                           webhook_id AS integration_id, webhook_id AS id,w.*
-                    FROM public.webhooks AS w 
-                    where 
-                        w.tenant_id =%(tenant_id)s  
-                        AND deleted_at ISNULL;""",
+            cur.mogrify("""SELECT w.*
+                            FROM public.webhooks AS w 
+                            WHERE w.tenant_id =%(tenant_id)s 
+                                AND deleted_at ISNULL;""",
                         {"tenant_id": tenant_id})
         )
         all = helper.list_to_camel_case(cur.fetchall())
-        if replace_none:
-            for w in all:
-                w["createdAt"] = TimeUTC.datetime_to_timestamp(w["createdAt"])
-                for k in w.keys():
-                    if w[k] is None:
-                        w[k] = ''
-        else:
-            for w in all:
-                w["createdAt"] = TimeUTC.datetime_to_timestamp(w["createdAt"])
+        for w in all:
+            w["createdAt"] = TimeUTC.datetime_to_timestamp(w["createdAt"])
         return all
 
 
@@ -89,10 +79,12 @@ def update(tenant_id, webhook_id, changes, replace_none=False):
                     UPDATE public.webhooks
                     SET {','.join(sub_query)}
                     WHERE tenant_id =%(tenant_id)s AND webhook_id =%(id)s AND deleted_at ISNULL
-                    RETURNING webhook_id AS integration_id, webhook_id AS id,*;""",
+                    RETURNING *;""",
                         {"tenant_id": tenant_id, "id": webhook_id, **changes})
         )
         w = helper.dict_to_camel_case(cur.fetchone())
+        if w is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"webhook not found.")
         w["createdAt"] = TimeUTC.datetime_to_timestamp(w["createdAt"])
         if replace_none:
             for k in w.keys():
@@ -106,7 +98,7 @@ def add(tenant_id, endpoint, auth_header=None, webhook_type='webhook', name="", 
         query = cur.mogrify("""\
                     INSERT INTO public.webhooks(tenant_id, endpoint,auth_header,type,name)
                     VALUES (%(tenant_id)s, %(endpoint)s, %(auth_header)s, %(type)s,%(name)s)
-                    RETURNING webhook_id AS integration_id, webhook_id AS id,*;""",
+                    RETURNING *;""",
                             {"tenant_id": tenant_id, "endpoint": endpoint, "auth_header": auth_header,
                              "type": webhook_type, "name": name})
         cur.execute(
@@ -121,17 +113,39 @@ def add(tenant_id, endpoint, auth_header=None, webhook_type='webhook', name="", 
         return w
 
 
-def add_edit(tenant_id, data, replace_none=None):
-    if data.get("webhookId") is not None:
-        return update(tenant_id=tenant_id, webhook_id=data["webhookId"],
-                      changes={"endpoint": data["endpoint"],
-                               "authHeader": None if "authHeader" not in data else data["authHeader"],
-                               "name": data["name"] if "name" in data else ""}, replace_none=replace_none)
+def exists_by_name(tenant_id: int, name: str, exclude_id: Optional[int],
+                   webhook_type: str = schemas.WebhookType.WEBHOOK) -> bool:
+    with pg_client.PostgresClient() as cur:
+        query = cur.mogrify(f"""SELECT EXISTS(SELECT 1 
+                                FROM public.webhooks
+                                WHERE name ILIKE %(name)s 
+                                   AND deleted_at ISNULL
+                                   AND tenant_id=%(tenant_id)s
+                                   AND type=%(webhook_type)s
+                                   {"AND webhook_id!=%(exclude_id)s" if exclude_id else ""}) AS exists;""",
+                            {"tenant_id": tenant_id, "name": name, "exclude_id": exclude_id,
+                             "webhook_type": webhook_type})
+        cur.execute(query)
+        row = cur.fetchone()
+    return row["exists"]
+
+
+def add_edit(tenant_id, data: schemas.WebhookSchema, replace_none=None):
+    if len(data.name) > 0 \
+            and exists_by_name(name=data.name, exclude_id=data.webhook_id, tenant_id=tenant_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"name already exists.")
+    if data.webhook_id is not None:
+        return update(tenant_id=tenant_id, webhook_id=data.webhook_id,
+                      changes={"endpoint": data.endpoint,
+                               "authHeader": data.auth_header,
+                               "name": data.name},
+                      replace_none=replace_none)
     else:
         return add(tenant_id=tenant_id,
-                   endpoint=data["endpoint"],
-                   auth_header=None if "authHeader" not in data else data["authHeader"],
-                   name=data["name"] if "name" in data else "", replace_none=replace_none)
+                   endpoint=data.endpoint,
+                   auth_header=data.auth_header,
+                   name=data.name,
+                   replace_none=replace_none)
 
 
 def delete(tenant_id, webhook_id):

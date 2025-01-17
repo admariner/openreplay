@@ -1,11 +1,9 @@
 {
   "extends": "../../tsconfig-base.json",
   "compilerOptions": {
-  	"allowSyntheticDefaultImports": true,
-    "lib": ["es6", "dom"],
+    "allowSyntheticDefaultImports": true,
+    "lib": ["es2020", "dom"],
+    "declaration": true,
+    "declarationDir": "../../dist/lib",
   },
-  "references": [
-    { "path": "../common" }
-  ],
-  "exclude": ["app/observer"]
 }

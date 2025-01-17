@@ -1,7 +1,7 @@
 from typing import Optional, Union
 
 from db.models import Event, DetailedEvent, Session
-from msgcodec.messages import *
+from messages import *
 
 
 def handle_normal_message(message: Message) -> Optional[Event]:
@@ -19,25 +19,8 @@ def handle_normal_message(message: Message) -> Optional[Event]:
         return n
 
     if isinstance(message, CustomEvent):
-        n.customevent_messageid = message.message_id
         n.customevent_name = message.name
-        n.customevent_timestamp = message.timestamp
         n.customevent_payload = message.payload
-        return n
-
-    if isinstance(message, ErrorEvent):
-        n.errorevent_message = message.message
-        n.errorevent_messageid = message.message_id
-        n.errorevent_name = message.name
-        n.errorevent_payload = message.payload
-        n.errorevent_source = message.source
-        n.errorevent_timestamp = message.timestamp
-        return n
-
-    if isinstance(message, JSException):
-        n.jsexception_name = message.name
-        n.jsexception_payload = message.payload
-        n.jsexception_message = message.message
         return n
 
     if isinstance(message, Metadata):
@@ -46,17 +29,21 @@ def handle_normal_message(message: Message) -> Optional[Event]:
         return n
 
     if isinstance(message, MouseClick):
-        n.mouseclick_hesitationtime = message.hesitation_time
-        n.mouseclick_id = message.id
-        n.mouseclick_label = message.label
-        n.mouseclick_selector = message.selector
+        n.clickevent_hesitationtime = message.hesitation_time
+        n.clickevent_messageid = message.id
+        n.clickevent_label = message.label
+        n.clickevent_selector = message.selector
         return n
 
-    if isinstance(message, MouseClickDepricated):
-        n.mouseclick_hesitationtime = message.hesitation_time
-        n.mouseclick_id = message.id
-        n.mouseclick_label = message.label
-        n.mouseclick_selector = ''
+    if isinstance(message, NetworkRequest):
+        n.networkrequest_type = message.type
+        n.networkrequest_method = message.method
+        n.networkrequest_url = message.url
+        n.networkrequest_request = message.request
+        n.networkrequest_response = message.response
+        n.networkrequest_status = message.status
+        n.networkrequest_timestamp = message.timestamp
+        n.networkrequest_duration = message.duration
         return n
 
     if isinstance(message, PageEvent):
@@ -74,11 +61,6 @@ def handle_normal_message(message: Message) -> Optional[Event]:
         n.pagerendertiming_visuallycomplete = message.visually_complete
         return n
 
-    if isinstance(message, RawCustomEvent):
-        n.rawcustomevent_name = message.name
-        n.rawcustomevent_payload = message.payload
-        return n
-
     if isinstance(message, SetViewportSize):
         n.setviewportsize_height = message.height
         n.setviewportsize_width = message.width
@@ -93,16 +75,18 @@ def handle_normal_message(message: Message) -> Optional[Event]:
         return n
 
     if isinstance(message, UserID):
-        n.user_id = message.id
+        if message.id != '':
+            n.user_id = message.id
         return n
 
     if isinstance(message, IssueEvent):
         n.issueevent_messageid = message.message_id
         n.issueevent_timestamp = message.timestamp
         n.issueevent_type = message.type
-        n.issueevent_contextstring = message.context_string
+        n.issueevent_context_string = message.context_string
         n.issueevent_context = message.context
         n.issueevent_payload = message.payload
+        n.issueevent_url = message.url
         return n
 
     if isinstance(message, CustomIssue):
@@ -129,7 +113,7 @@ def handle_session(n: Session, message: Message) -> Optional[Session]:
         n.user_device_type = message.user_device_type
         n.user_device_memory_size = message.user_device_memory_size
         n.user_device_heap_size = message.user_device_heap_size
-        n.user_country = message.user_country
+        n.user_country = message.user_country.split('|')[0]
         return n
 
     if isinstance(message, SessionEnd):
@@ -147,14 +131,18 @@ def handle_session(n: Session, message: Message) -> Optional[Session]:
         return n
 
     if isinstance(message, BatchMetadata):
-        n.batchmeta_page_no = message.page_no
-        n.batchmeta_first_index = message.first_index
-        n.batchmeta_timestamp = message.timestamp
+        n.batchmetadata_version = message.version
+        n.batchmetadata_page_no = message.page_no
+        n.batchmetadata_first_index = message.first_index
+        n.batchmetadata_timestamp = message.timestamp
+        n.batchmetadata_location = message.location
         return n
 
+
     if isinstance(message, PartitionedMessage):
-        n.part_no = message.part_no
-        n.part_total = message.part_total
+        n.partitionedmessage_part_no = message.part_no
+        n.partitionedmessage_part_total = message.part_total
+        return n
 
     # if isinstance(message, IOSBatchMeta):
     #     n.iosbatchmeta_page_no = message.page_no
@@ -182,10 +170,10 @@ def handle_session(n: Session, message: Message) -> Optional[Session]:
             n.urls_count += 1
         except TypeError:
             n.urls_count = 1
-        try:
-            n.urls.append(message.url)
-        except AttributeError:
-            n.urls = [message.url]
+        #itry:
+        #    n.urls.append(message.url)
+        #except AttributeError:
+        #    n.urls = [message.url]
         return n
 
     if isinstance(message, PerformanceTrackAggr):
@@ -198,37 +186,43 @@ def handle_session(n: Session, message: Message) -> Optional[Session]:
         return n
 
     if isinstance(message, UserID):
-        n.user_id = message.id
+        try:
+            if message.id != '':
+                n.user_id = message.id
+        except AttributeError as e:
+            print(f'Session current type: {type(n)}')
+            print(f'Message id: {message.id}')
+            raise e
         return n
 
     if isinstance(message, UserAnonymousID):
         n.user_anonymous_id = message.id
         return n
 
-    if isinstance(message, JSException):
+    if isinstance(message, JSException) or isinstance(message, JSExceptionDeprecated):
         try:
             n.js_exceptions_count += 1
         except TypeError:
             n.js_exceptions_count = 1
         return n
 
-    if isinstance(message, LongTask):
-        try:
-            n.long_tasks_total_duration += message.duration
-        except TypeError:
-            n.long_tasks_total_duration = message.duration
+    #if isinstance(message, LongTask):
+    #    try:
+    #        n.long_tasks_total_duration += message.duration
+    #    except TypeError:
+    #        n.long_tasks_total_duration = message.duration
 
-        try:
-            if n.long_tasks_max_duration > message.duration:
-                n.long_tasks_max_duration = message.duration
-        except TypeError:
-            n.long_tasks_max_duration = message.duration
+    #    try:
+    #        if n.long_tasks_max_duration > message.duration:
+    #            n.long_tasks_max_duration = message.duration
+    #    except TypeError:
+    #        n.long_tasks_max_duration = message.duration
 
-        try:
-            n.long_tasks_count += 1
-        except TypeError:
-            n.long_tasks_count = 1
-        return n
+    #    try:
+    #        n.long_tasks_count += 1
+    #    except TypeError:
+    #        n.long_tasks_count = 1
+    #    return n
 
     if isinstance(message, InputEvent):
         try:
@@ -239,56 +233,34 @@ def handle_session(n: Session, message: Message) -> Optional[Session]:
 
     if isinstance(message, MouseClick):
         try:
-            n.inputs_count += 1
+            n.clicks_count += 1
         except TypeError:
-            n.inputs_count = 1
+            n.clicks_count = 1
         return n
 
-    if isinstance(message, IssueEvent):
+    if isinstance(message, IssueEvent) or isinstance(message, IssueEventDeprecated):
         try:
             n.issues_count += 1
         except TypeError:
             n.issues_count = 1
 
-
-            n.inputs_count = 1
-        return n
-
-    if isinstance(message, MouseClickDepricated):
-        try:
-            n.inputs_count += 1
-        except TypeError:
-            n.inputs_count = 1
-        return n
-
-    if isinstance(message, IssueEvent):
-        try:
-            n.issues_count += 1
-        except TypeError:
-            n.issues_count = 1
-
-        try:
-            n.issues.append(message.type)
-        except AttributeError:
-            n.issues = [message.type]
+        #try:
+        #    n.issues.append(message.type)
+        #except AttributeError:
+        #    n.issues = [message.type]
         return n
 
 
 def handle_message(message: Message) -> Optional[DetailedEvent]:
     n = DetailedEvent()
 
-    if isinstance(message, SessionEnd):
-        n.sessionend = True
-        n.sessionend_timestamp = message.timestamp
-        return n
+    # if isinstance(message, SessionEnd):
+    #     n.sessionend = True
+    #     n.sessionend_timestamp = message.timestamp
+    #     return n
 
     if isinstance(message, Timestamp):
         n.timestamp_timestamp = message.timestamp
-        return n
-
-    if isinstance(message, SessionDisconnect):
-        n.sessiondisconnect = True
-        n.sessiondisconnect_timestamp = message.timestamp
         return n
 
     if isinstance(message, SessionStart):
@@ -352,38 +324,31 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         n.pagerendertiming_timetointeractive = message.time_to_interactive
         return n
 
-    if isinstance(message, ResourceTiming):
-        n.resourcetiming_timestamp = message.timestamp
-        n.resourcetiming_duration = message.duration
-        n.resourcetiming_ttfb = message.ttfb
-        n.resourcetiming_headersize = message.header_size
-        n.resourcetiming_encodedbodysize = message.encoded_body_size
-        n.resourcetiming_decodedbodysize = message.decoded_body_size
-        n.resourcetiming_url = message.url
-        n.resourcetiming_initiator = message.initiator
+    # if isinstance(message, ResourceTiming):
+    #     n.resourcetiming_timestamp = message.timestamp
+    #     n.resourcetiming_duration = message.duration
+    #     n.resourcetiming_ttfb = message.ttfb
+    #     n.resourcetiming_headersize = message.header_size
+    #     n.resourcetiming_encodedbodysize = message.encoded_body_size
+    #     n.resourcetiming_decodedbodysize = message.decoded_body_size
+    #     n.resourcetiming_url = message.url
+    #     n.resourcetiming_initiator = message.initiator
+    #     return n
+
+
+
+    if isinstance(message, IntegrationEvent):
+        n.integrationevent_timestamp = message.timestamp
+        n.integrationevent_source = message.source
+        n.integrationevent_name = message.name
+        n.integrationevent_message = message.message
+        n.integrationevent_payload = message.payload
         return n
 
-    if isinstance(message, JSException):
-        n.jsexception_name = message.name
-        n.jsexception_message = message.message
-        n.jsexception_payload = message.payload
-        return n
-
-    if isinstance(message, RawErrorEvent):
-        n.rawerrorevent_timestamp = message.timestamp
-        n.rawerrorevent_source = message.source
-        n.rawerrorevent_name = message.name
-        n.rawerrorevent_message = message.message
-        n.rawerrorevent_payload = message.payload
-        return n
-
-    if isinstance(message, RawCustomEvent):
-        n.rawcustomevent_name = message.name
-        n.rawcustomevent_payload = message.payload
-        return n
 
     if isinstance(message, UserID):
-        n.userid_id = message.id
+        if message.id != '':
+            n.userid_id = message.id
         return n
 
     if isinstance(message, UserAnonymousID):
@@ -402,14 +367,78 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         return n
 
     if isinstance(message, BatchMetadata):
-        n.batchmeta_page_no = message.page_no
-        n.batchmeta_first_index = message.first_index
-        n.batchmeta_timestamp = message.timestamp
+        n.batchmetadata_version = message.version
+        n.batchmetadata_page_no = message.page_no
+        n.batchmetadata_first_index = message.first_index
+        n.batchmetadata_timestamp = message.timestamp
+        n.batchmetadata_location = message.location
         return n
 
     if isinstance(message, PartitionedMessage):
-        n.part_no = message.part_no
-        n.part_total = message.part_total
+        n.partitionedmessage_part_no = message.part_no
+        n.partitionedmessage_part_total = message.part_total
+        return n
+
+    if isinstance(message, InputChange):
+        n.inputchange_id=message.id
+        n.inputchange_value=message.value
+        n.inputchange_value_masked=message.value_masked
+        n.inputchange_label=message.label
+        n.inputchange_hesitation_time=message.hesitation_time
+        n.inputchange_input_duration=message.input_duration
+        return n
+
+
+    if isinstance(message, SelectionChange):
+        n.selectionchange_selection_start=message.selection_start
+        n.selectionchange_selection_end=message.selection_end
+        n.selectionchange_selection=message.selection
+        return n
+
+    if isinstance(message, MouseThrashing):
+        n.mousethrashing_timestamp=message.timestamp
+        return n
+
+    if isinstance(message, UnbindNodes):
+        n.unbindnodes_total_removed_percent=message.total_removed_percent
+        return n
+
+
+    if isinstance(message, ResourceTiming):
+        n.resourcetiming_timestamp=message.timestamp
+        n.resourcetiming_duration=message.duration
+        n.resourcetiming_ttfb=message.ttfb
+        n.resourcetiming_header_size=message.header_size
+        n.resourcetiming_encoded_body_size=message.encoded_body_size
+        n.resourcetiming_decoded_body_size=message.decoded_body_size
+        n.resourcetiming_url=message.url
+        n.resourcetiming_initiator=message.initiator
+        n.resourcetiming_transferred_size=message.transferred_size
+        n.resourcetiming_cached=message.cached
+        return n
+
+
+    if isinstance(message, IssueEvent):
+        n.issueevent_message_id=message.message_id
+        n.issueevent_timestamp=message.timestamp
+        n.issueevent_type=message.type
+        n.issueevent_context_string=message.context_string
+        n.issueevent_context=message.context
+        n.issueevent_payload=message.payload
+        n.issueevent_url=message.url
+        return n
+
+    if isinstance(message, SessionEnd):
+        n.sessionend_timestamp=message.timestamp
+        n.sessionend_encryption_key=message.encryption_key
+        return n
+
+
+    if isinstance(message, SessionSearch):
+        n.sessionsearch_timestamp=message.timestamp
+        n.sessionsearch_partition=message.partition
+        return n
+
 
     if isinstance(message, PerformanceTrack):
         n.performancetrack_frames = message.frames
@@ -466,42 +495,71 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         n.inputevent_label = message.label
         return n
 
-    if isinstance(message, ClickEvent):
-        n.clickevent_messageid = message.message_id
-        n.clickevent_timestamp = message.timestamp
-        n.clickevent_hesitationtime = message.hesitation_time
-        n.clickevent_label = message.label
-        return n
-
-    if isinstance(message, ErrorEvent):
-        n.errorevent_messageid = message.message_id
-        n.errorevent_timestamp = message.timestamp
-        n.errorevent_source = message.source
-        n.errorevent_name = message.name
-        n.errorevent_message = message.message
-        n.errorevent_payload = message.payload
-        return n
-
-    if isinstance(message, ResourceEvent):
-        n.resourceevent_messageid = message.message_id
-        n.resourceevent_timestamp = message.timestamp
-        n.resourceevent_duration = message.duration
-        n.resourceevent_ttfb = message.ttfb
-        n.resourceevent_headersize = message.header_size
-        n.resourceevent_encodedbodysize = message.encoded_body_size
-        n.resourceevent_decodedbodysize = message.decoded_body_size
-        n.resourceevent_url = message.url
-        n.resourceevent_type = message.type
-        n.resourceevent_success = message.success
-        n.resourceevent_method = message.method
-        n.resourceevent_status = message.status
-        return n
-
     if isinstance(message, CustomEvent):
-        n.customevent_messageid = message.message_id
-        n.customevent_timestamp = message.timestamp
         n.customevent_name = message.name
         n.customevent_payload = message.payload
+        return n
+
+    if isinstance(message, LoadFontFace):
+        n.loadfontface_parent_id = message.parent_id
+        n.loadfontface_family = message.family
+        n.loadfontface_source = message.source
+        n.loadfontface_descriptors = message.descriptors
+        return n
+
+    if isinstance(message, SetNodeFocus):
+        n.setnodefocus_id = message.id
+        return n
+
+    if isinstance(message, AdoptedSSReplaceURLBased):
+        n.adoptedssreplaceurlbased_sheet_id = message.sheet_id
+        n.adoptedssreplaceurlbased_text = message.text
+        n.adoptedssreplaceurlbased_base_url = message.base_url
+        return n
+
+    if isinstance(message, AdoptedSSReplace):
+        n.adoptedssreplace_sheet_id = message.sheet_id
+        n.adoptedssreplace_text = message.text
+        return n
+
+    if isinstance(message, AdoptedSSInsertRuleURLBased):
+        n.adoptedssinsertruleurlbased_sheet_id = message.sheet_id
+        n.adoptedssinsertruleurlbased_rule = message.rule
+        n.adoptedssinsertruleurlbased_index = message.index
+        n.adoptedssinsertruleurlbased_base_url = message.base_url
+        return n
+
+    if isinstance(message, AdoptedSSInsertRule):
+        n.adoptedssinsertrule_sheet_id = message.sheet_id
+        n.adoptedssinsertrule_rule = message.rule
+        n.adoptedssinsertrule_index = message.index
+        return n
+
+    if isinstance(message, AdoptedSSDeleteRule):
+        n.adoptedssdeleterule_sheet_id = message.sheet_id
+        n.adoptedssdeleterule_index = message.index
+        return n
+
+    if isinstance(message, AdoptedSSAddOwner):
+        n.adoptedssaddowner_sheet_id = message.sheet_id
+        n.adoptedssaddowner_id = message.id
+        return n
+
+    if isinstance(message, AdoptedSSRemoveOwner):
+        n.adoptedssremoveowner_sheet_id = message.sheet_id
+        n.adoptedssremoveowner_id = message.id
+        return n
+
+    if isinstance(message, JSException):
+        n.jsexception_name = message.name
+        n.jsexception_message = message.message
+        n.jsexception_payload = message.payload
+        n.jsexception_metadata = message.metadata
+        return n
+
+    if isinstance(message, Zustand):
+        n.zustand_mutation = message.mutation
+        n.zustand_state = message.state
         return n
 
     # if isinstance(message, CreateDocument):
@@ -542,15 +600,10 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         n.fetch_duration = message.duration
         return n
 
-    if isinstance(message, FetchEvent):
-        n.fetch_event_message_id = message.message_id
-        n.fetch_event_timestamp = message.timestamp
-        n.fetch_event_method = message.method
-        n.fetch_event_url = message.url
-        n.fetch_event_request = message.request
-        n.fetch_event_response = message.response
-        n.fetch_event_status = message.status
-        n.fetch_event_duration = message.duration
+    if isinstance(message, SetNodeAttributeDict):
+        n.setnodeattributedict_id = message.id,
+        n.setnodeattributedict_name_key = message.name_key
+        n.setnodeattributedict_value_key = message.value_key
         return n
 
     if isinstance(message, Profiler):
@@ -567,28 +620,11 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         n.graphql_response = message.response
         return n
 
-    if isinstance(message, GraphQLEvent):
-        n.graphqlevent_messageid = message.message_id
-        n.graphqlevent_timestamp = message.timestamp
-        n.graphqlevent_name = message.name
-        return n
-
-    if isinstance(message, DomDrop):
-        n.domdrop_timestamp = message.timestamp
-        return n
-
     if isinstance(message, MouseClick):
         n.mouseclick_id = message.id
         n.mouseclick_hesitationtime = message.hesitation_time
         n.mouseclick_label = message.label
         n.mouseclick_selector = message.selector
-        return n
-
-    if isinstance(message, MouseClickDepricated):
-        n.mouseclick_id = message.id
-        n.mouseclick_hesitationtime = message.hesitation_time
-        n.mouseclick_label = message.label
-        n.mouseclick_selector = ''
         return n
 
     if isinstance(message, SetPageLocation):
@@ -612,27 +648,15 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         n.longtasks_containername = message.container_name
         return n
 
-    if isinstance(message, SetNodeURLBasedAttribute):
-        n.setnodeurlbasedattribute_id = message.id
-        n.setnodeurlbasedattribute_name = message.name
-        n.setnodeurlbasedattribute_value = message.value
-        n.setnodeurlbasedattribute_baseurl = message.base_url
-        return n
-
-    if isinstance(message, SetStyleData):
-        n.setstyledata_id = message.id
-        n.setstyledata_data = message.data
-        n.setstyledata_baseurl = message.base_url
-        return n
-
-    if isinstance(message, IssueEvent):
-        n.issueevent_messageid = message.message_id
-        n.issueevent_timestamp = message.timestamp
-        n.issueevent_type = message.type
-        n.issueevent_contextstring = message.context_string
-        n.issueevent_context = message.context
-        n.issueevent_payload = message.payload
-        return n
+    #if isinstance(message, IssueEvent):
+    #    n.issueevent_message_id = message.message_id
+    #    n.issueevent_timestamp = message.timestamp
+    #    n.issueevent_type = message.type
+    #    n.issueevent_context_string = message.context_string
+    #    n.issueevent_context = message.context
+    #    n.issueevent_payload = message.payload
+    #    n.issueevent_url = message.url
+    #    return n
 
     if isinstance(message, TechnicalInfo):
         n.technicalinfo_type = message.type
@@ -642,10 +666,6 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
     if isinstance(message, CustomIssue):
         n.customissue_name = message.name
         n.customissue_payload = message.payload
-        return n
-
-    if isinstance(message, PageClose):
-        n.pageclose = True
         return n
 
     if isinstance(message, AssetCache):
@@ -677,7 +697,7 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         return n
 
     if isinstance(message, IOSBatchMeta):
-        n.iosbatchmeta_page_no = message.page_no
+        n.iosbatchmeta_lenght = message.length
         n.iosbatchmeta_first_index = message.first_index
         n.iosbatchmeta_timestamp = message.timestamp
         return n
@@ -685,13 +705,13 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
     if isinstance(message, IOSUserID):
         n.iosuserid_timestamp = message.timestamp
         n.iosuserid_length = message.length
-        n.iosuserid_value = message.value
+        n.iosuserid_id = message.id
         return n
 
     if isinstance(message, IOSUserAnonymousID):
         n.iosuseranonymousid_timestamp = message.timestamp
         n.iosuseranonymousid_length = message.length
-        n.iosuseranonymousid_value = message.value
+        n.iosuseranonymousid_id = message.id
         return n
 
     if isinstance(message, IOSScreenEnter):
@@ -759,11 +779,11 @@ def handle_message(message: Message) -> Optional[DetailedEvent]:
         n.iosissueevent_payload = message.payload
         return n
 
-    if isinstance(message, IOSCustomEvent):
-        n.ioscustomevent_timestamp = message.timestamp
-        n.ioscustomevent_length = message.length
-        n.ioscustomevent_name = message.name
-        n.ioscustomevent_payload = message.payload
+    if isinstance(message, IOSEvent):
+        n.iosevent_timestamp = message.timestamp
+        n.iosevent_length = message.length
+        n.iosevent_name = message.name
+        n.iosevent_payload = message.payload
         return n
 
     if isinstance(message, IOSInternalError):

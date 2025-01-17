@@ -1,106 +1,57 @@
 package main
 
 import (
-	"log"
-	config "openreplay/backend/internal/config/integrations"
-	"openreplay/backend/internal/integrations/clientManager"
-	"openreplay/backend/pkg/monitoring"
-	"time"
-
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"openreplay/backend/pkg/db/postgres"
-	"openreplay/backend/pkg/intervals"
-	"openreplay/backend/pkg/queue"
-	"openreplay/backend/pkg/token"
+	config "openreplay/backend/internal/config/integrations"
+	"openreplay/backend/internal/http/server"
+	"openreplay/backend/pkg/db/postgres/pool"
+	integration "openreplay/backend/pkg/integrations"
+	"openreplay/backend/pkg/logger"
+	"openreplay/backend/pkg/metrics"
+	"openreplay/backend/pkg/metrics/database"
 )
 
 func main() {
-	metrics := monitoring.New("integrations")
+	ctx := context.Background()
+	log := logger.New()
+	cfg := config.New(log)
+	metrics.New(log, append(database.List()))
 
-	log.SetFlags(log.LstdFlags | log.LUTC | log.Llongfile)
-
-	cfg := config.New()
-
-	pg := postgres.NewConn(cfg.PostgresURI, 0, 0, metrics)
-	defer pg.Close()
-
-	tokenizer := token.NewTokenizer(cfg.TokenSecret)
-
-	manager := clientManager.NewManager()
-
-	pg.IterateIntegrationsOrdered(func(i *postgres.Integration, err error) {
-		if err != nil {
-			log.Printf("Postgres error: %v\n", err)
-			return
-		}
-		log.Printf("Integration initialization: %v\n", *i)
-		err = manager.Update(i)
-		if err != nil {
-			log.Printf("Integration parse error: %v | Integration: %v\n", err, *i)
-			return
-		}
-	})
-
-	producer := queue.NewProducer(cfg.MessageSizeLimit, true)
-	defer producer.Close(15000)
-
-	listener, err := postgres.NewIntegrationsListener(cfg.PostgresURI)
+	pgConn, err := pool.New(cfg.Postgres.String())
 	if err != nil {
-		log.Printf("Postgres listener error: %v\n", err)
-		log.Fatalf("Postgres listener error")
+		log.Fatal(ctx, "can't init postgres connection: %s", err)
 	}
-	defer listener.Close()
+	defer pgConn.Close()
 
+	services, err := integration.NewServiceBuilder(log, cfg, pgConn)
+	if err != nil {
+		log.Fatal(ctx, "can't init services: %s", err)
+	}
+
+	router, err := integration.NewRouter(cfg, log, services)
+	if err != nil {
+		log.Fatal(ctx, "failed while creating router: %s", err)
+	}
+
+	dataIntegrationServer, err := server.New(router.GetHandler(), cfg.HTTPHost, cfg.HTTPPort, cfg.HTTPTimeout)
+	if err != nil {
+		log.Fatal(ctx, "failed while creating server: %s", err)
+	}
+	go func() {
+		if err := dataIntegrationServer.Start(); err != nil {
+			log.Fatal(ctx, "http server error: %s", err)
+		}
+	}()
+	log.Info(ctx, "server successfully started on port %s", cfg.HTTPPort)
+
+	// Wait stop signal to shut down server gracefully
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
-
-	tick := time.Tick(intervals.INTEGRATIONS_REQUEST_INTERVAL * time.Millisecond)
-
-	log.Printf("Integration service started\n")
-	manager.RequestAll()
-	for {
-		select {
-		case sig := <-sigchan:
-			log.Printf("Caught signal %v: terminating\n", sig)
-			listener.Close()
-			pg.Close()
-			os.Exit(0)
-		case <-tick:
-			log.Printf("Requesting all...\n")
-			manager.RequestAll()
-		case event := <-manager.Events:
-			log.Printf("New integration event: %+v\n", *event.IntegrationEvent)
-			sessionID := event.SessionID
-			if sessionID == 0 {
-				sessData, err := tokenizer.Parse(event.Token)
-				if err != nil && err != token.EXPIRED {
-					log.Printf("Error on token parsing: %v; Token: %v", err, event.Token)
-					continue
-				}
-				sessionID = sessData.ID
-			}
-			producer.Produce(cfg.TopicAnalytics, sessionID, event.IntegrationEvent.Encode())
-		case err := <-manager.Errors:
-			log.Printf("Integration error: %v\n", err)
-		case i := <-manager.RequestDataUpdates:
-			// log.Printf("Last request integration update: %v || %v\n", i, string(i.RequestData))
-			if err := pg.UpdateIntegrationRequestData(&i); err != nil {
-				log.Printf("Postgres Update request_data error: %v\n", err)
-			}
-		case err := <-listener.Errors:
-			log.Printf("Postgres listen error: %v\n", err)
-			listener.Close()
-			pg.Close()
-			os.Exit(0)
-		case iPointer := <-listener.Integrations:
-			log.Printf("Integration update: %v\n", *iPointer)
-			err := manager.Update(iPointer)
-			if err != nil {
-				log.Printf("Integration parse error: %v | Integration: %v\n", err, *iPointer)
-			}
-		}
-	}
+	<-sigchan
+	log.Info(ctx, "shutting down the server")
+	dataIntegrationServer.Stop()
 }

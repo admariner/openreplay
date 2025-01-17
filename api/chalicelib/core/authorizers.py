@@ -1,54 +1,98 @@
+import logging
+
 import jwt
-from chalicelib.utils import helper
-from chalicelib.utils.TimeUTC import TimeUTC
 from decouple import config
+
 from chalicelib.core import tenants
-from chalicelib.core import users
+from chalicelib.core import users, spot
+from chalicelib.utils.TimeUTC import TimeUTC
+
+logger = logging.getLogger(__name__)
 
 
-def jwt_authorizer(token):
-    token = token.split(" ")
-    if len(token) != 2 or token[0].lower() != "bearer":
+def get_supported_audience():
+    return [users.AUDIENCE, spot.AUDIENCE]
+
+
+def is_spot_token(token: str) -> bool:
+    try:
+        decoded_token = jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
+        audience = decoded_token.get("aud")
+        return audience == spot.AUDIENCE
+    except jwt.InvalidTokenError:
+        logger.error(f"Invalid token for is_spot_token: {token}")
+        raise
+
+
+def jwt_authorizer(scheme: str, token: str, leeway=0) -> dict | None:
+    if scheme.lower() != "bearer":
         return None
     try:
-        payload = jwt.decode(
-            token[1],
-            config("jwt_secret"),
-            algorithms=config("jwt_algorithm"),
-            audience=[ f"front:{helper.get_stage_name()}"]
-        )
+        payload = jwt.decode(jwt=token,
+                             key=config("JWT_SECRET") if not is_spot_token(token) else config("JWT_SPOT_SECRET"),
+                             algorithms=config("JWT_ALGORITHM"),
+                             audience=get_supported_audience(),
+                             leeway=leeway)
     except jwt.ExpiredSignatureError:
-        print("! JWT Expired signature")
+        logger.debug("! JWT Expired signature")
         return None
     except BaseException as e:
-        print("! JWT Base Exception")
+        logger.warning("! JWT Base Exception")
+        logger.debug(e)
         return None
     return payload
 
 
-def jwt_context(context):
-    user = users.get(user_id=context["userId"], tenant_id=context["tenantId"])
-    if user is None:
+def jwt_refresh_authorizer(scheme: str, token: str):
+    if scheme.lower() != "bearer":
         return None
-    return {
-        "tenantId": context["tenantId"],
-        "userId": context["userId"],
-        **user
-    }
+    try:
+        payload = jwt.decode(jwt=token,
+                             key=config("JWT_REFRESH_SECRET") if not is_spot_token(token) \
+                                 else config("JWT_SPOT_REFRESH_SECRET"),
+                             algorithms=config("JWT_ALGORITHM"),
+                             audience=get_supported_audience())
+    except jwt.ExpiredSignatureError:
+        logger.debug("! JWT-refresh Expired signature")
+        return None
+    except BaseException as e:
+        logger.warning("! JWT-refresh Base Exception")
+        logger.debug(e)
+        return None
+    return payload
 
 
-def generate_jwt(id, tenant_id, iat, aud):
+def generate_jwt(user_id, tenant_id, iat, aud, for_spot=False):
     token = jwt.encode(
         payload={
-            "userId": id,
+            "userId": user_id,
             "tenantId": tenant_id,
-            "exp": iat // 1000 + config("JWT_EXPIRATION", cast=int) + TimeUTC.get_utc_offset() // 1000,
+            "exp": iat + (config("JWT_EXPIRATION", cast=int) if not for_spot
+                          else config("JWT_SPOT_EXPIRATION", cast=int)),
             "iss": config("JWT_ISSUER"),
-            "iat": iat // 1000,
+            "iat": iat,
             "aud": aud
         },
-        key=config("jwt_secret"),
-        algorithm=config("jwt_algorithm")
+        key=config("JWT_SECRET") if not for_spot else config("JWT_SPOT_SECRET"),
+        algorithm=config("JWT_ALGORITHM")
+    )
+    return token
+
+
+def generate_jwt_refresh(user_id, tenant_id, iat, aud, jwt_jti, for_spot=False):
+    token = jwt.encode(
+        payload={
+            "userId": user_id,
+            "tenantId": tenant_id,
+            "exp": iat + (config("JWT_REFRESH_EXPIRATION", cast=int) if not for_spot
+                          else config("JWT_SPOT_REFRESH_EXPIRATION", cast=int)),
+            "iss": config("JWT_ISSUER"),
+            "iat": iat,
+            "aud": aud,
+            "jti": jwt_jti
+        },
+        key=config("JWT_REFRESH_SECRET") if not for_spot else config("JWT_SPOT_REFRESH_SECRET"),
+        algorithm=config("JWT_ALGORITHM")
     )
     return token
 

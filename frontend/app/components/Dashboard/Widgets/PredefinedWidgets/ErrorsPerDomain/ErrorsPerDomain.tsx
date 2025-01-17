@@ -1,39 +1,39 @@
 import React from 'react';
-import { NoContent } from 'UI';
-import { Styles } from '../../common';
-import { numberWithCommas } from 'App/utils';
-import Bar from 'App/components/Dashboard/Widgets/ErrorsPerDomain/Bar';
-import { NO_METRIC_DATA } from 'App/constants/messages'
+import { Icon, NoContent } from 'UI';
+import { NO_METRIC_DATA } from 'App/constants/messages';
+import ListWithIcons from 'Components/Dashboard/Widgets/ListWithIcons';
+import { InfoCircleOutlined } from '@ant-design/icons';
 
 interface Props {
-    data: any
-    metric?: any
+  data: any;
 }
+
 function ErrorsPerDomain(props: Props) {
-    const { data, metric } = props;
-    // const firstAvg = 10;
-    const firstAvg = metric.data.chart[0] && metric.data.chart[0].errorsCount;
-    return (
-        <NoContent
-          size="small"
-          show={ metric.data.chart.length === 0 }
-          style={{ height: '240px'}}
-          title={NO_METRIC_DATA}
-        >
-          <div className="w-full" style={{ height: '240px' }}>
-            {metric.data.chart.map((item, i) => 
-              <Bar
-                key={i}
-                className="mb-2"
-                avg={numberWithCommas(Math.round(item.errorsCount))}
-                width={Math.round((item.errorsCount * 100) / firstAvg) - 10}
-                domain={item.domain}
-                color={Styles.colors[i]}
-              />
-            )}
-          </div>
-        </NoContent>
-    );
+  const { data } = props;
+  const highest = data.chart[0] && data.chart[0].errorsCount;
+  const list = data.chart.slice(0, 4).map((item: any) => ({
+    name: item.domain,
+    icon: <Icon name="link-45deg" size={24} />,
+    value: Math.round(item.errorsCount),
+    progress: Math.round((item.errorsCount * 100) / highest)
+  }));
+
+  return (
+    <NoContent
+      size="small"
+      show={data.chart.length === 0}
+      style={{ height: '240px' }}
+      title={
+        <div className='flex items-center gap-2 text-base font-normal'>
+        <InfoCircleOutlined  size={12} /> { NO_METRIC_DATA }
+    </div>
+      }
+    >
+      <div className="w-full" style={{ height: '240px' }}>
+        <ListWithIcons list={list} />
+      </div>
+    </NoContent>
+  );
 }
 
 export default ErrorsPerDomain;

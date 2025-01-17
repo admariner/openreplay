@@ -1,14 +1,17 @@
 package custom
 
 import (
+	"encoding/json"
+	"fmt"
 	. "openreplay/backend/pkg/messages"
 )
 
-const PAGE_EVENT_TIMEOUT = 1 * 60 * 1000
+const PageEventTimeout = 1 * 60 * 1000
 
 type pageEventBuilder struct {
 	pageEvent          *PageEvent
 	firstTimingHandled bool
+	webVitals          map[string]string
 }
 
 func NewPageEventBuilder() *pageEventBuilder {
@@ -16,7 +19,7 @@ func NewPageEventBuilder() *pageEventBuilder {
 	return ieBuilder
 }
 
-func (b *pageEventBuilder) Handle(message Message, messageID uint64, timestamp uint64) Message {
+func (b *pageEventBuilder) Handle(message Message, timestamp uint64) Message {
 	switch msg := message.(type) {
 	case *SetPageLocation:
 		if msg.NavigationStart == 0 { // routing without new page loading
@@ -24,7 +27,7 @@ func (b *pageEventBuilder) Handle(message Message, messageID uint64, timestamp u
 				URL:       msg.URL,
 				Referrer:  msg.Referrer,
 				Loaded:    false,
-				MessageID: messageID,
+				MessageID: message.MsgID(),
 				Timestamp: timestamp,
 			}
 		} else {
@@ -33,7 +36,7 @@ func (b *pageEventBuilder) Handle(message Message, messageID uint64, timestamp u
 				URL:       msg.URL,
 				Referrer:  msg.Referrer,
 				Loaded:    true,
-				MessageID: messageID,
+				MessageID: message.MsgID(),
 				Timestamp: timestamp,
 			}
 			return pageEvent
@@ -69,7 +72,7 @@ func (b *pageEventBuilder) Handle(message Message, messageID uint64, timestamp u
 		if msg.FirstContentfulPaint <= 30000 {
 			b.pageEvent.FirstContentfulPaint = msg.FirstContentfulPaint
 		}
-		return b.buildIfTimingsComplete()
+		return nil
 	case *PageRenderTiming:
 		if b.pageEvent == nil {
 			break
@@ -77,11 +80,15 @@ func (b *pageEventBuilder) Handle(message Message, messageID uint64, timestamp u
 		b.pageEvent.SpeedIndex = msg.SpeedIndex
 		b.pageEvent.VisuallyComplete = msg.VisuallyComplete
 		b.pageEvent.TimeToInteractive = msg.TimeToInteractive
-		return b.buildIfTimingsComplete()
-
+		return nil
+	case *WebVitals:
+		if b.webVitals == nil {
+			b.webVitals = make(map[string]string)
+		}
+		b.webVitals[msg.Name] = msg.Value
 	}
 
-	if b.pageEvent != nil && b.pageEvent.Timestamp+PAGE_EVENT_TIMEOUT < timestamp {
+	if b.pageEvent != nil && b.pageEvent.Timestamp+PageEventTimeout < timestamp {
 		return b.Build()
 	}
 	return nil
@@ -94,13 +101,12 @@ func (b *pageEventBuilder) Build() Message {
 	pageEvent := b.pageEvent
 	b.pageEvent = nil
 	b.firstTimingHandled = false
-	return pageEvent
-}
-
-func (b *pageEventBuilder) buildIfTimingsComplete() Message {
-	if b.firstTimingHandled {
-		return b.Build()
+	if b.webVitals != nil {
+		if vitals, err := json.Marshal(b.webVitals); err == nil {
+			pageEvent.WebVitals = string(vitals)
+		} else {
+			fmt.Printf("Error marshalling web vitals: %v\n", err)
+		}
 	}
-	b.firstTimingHandled = true
-	return nil
+	return pageEvent
 }

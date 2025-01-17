@@ -1,10 +1,23 @@
+\set previous_version 'v1.6.0-ee'
+\set next_version 'v1.7.0-ee'
+SELECT openreplay_version()                       AS current_version,
+       openreplay_version() = :'previous_version' AS valid_previous,
+       openreplay_version() = :'next_version'     AS is_next
+\gset
+
+\if :valid_previous
+\echo valid previous DB version :'previous_version', starting DB upgrade to :'next_version'
 BEGIN;
-CREATE OR REPLACE
-    FUNCTION openreplay_version()
+SELECT format($fn_def$
+CREATE OR REPLACE FUNCTION openreplay_version()
     RETURNS text AS
 $$
-SELECT 'v1.7.0-ee'
+SELECT '%1$s'
 $$ LANGUAGE sql IMMUTABLE;
+$fn_def$, :'next_version')
+\gexec
+
+--
 
 UPDATE roles
 SET permissions=array_remove(permissions, 'ERRORS');
@@ -14,11 +27,11 @@ ALTER TABLE IF EXISTS dashboards
 
 
 CREATE
-    INDEX IF NOT EXISTS traces_created_at_idx ON traces (created_at);
+    INDEX IF NOT EXISTS traces_created_at_idx ON public.traces (created_at);
 CREATE
-    INDEX IF NOT EXISTS traces_action_idx ON traces (action);
+    INDEX IF NOT EXISTS traces_action_idx ON public.traces (action);
 CREATE
-    INDEX IF NOT EXISTS users_name_gin_idx ON users USING GIN (name gin_trgm_ops);
+    INDEX IF NOT EXISTS users_name_gin_idx ON public.users USING GIN (name gin_trgm_ops);
 
 
 
@@ -214,3 +227,9 @@ $$
 $$;
 DROP INDEX IF EXISTS autocomplete_unique;
 COMMIT;
+
+\elif :is_next
+\echo new version detected :'next_version', nothing to do
+\else
+\warn skipping DB upgrade of :'next_version', expected previous version :'previous_version', found :'current_version'
+\endif

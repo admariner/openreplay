@@ -1,176 +1,207 @@
 import React from 'react';
-import { Controls } from 'Player';
-import { NETWORK, EXCEPTIONS } from 'Duck/components/player';
 import { useModal } from 'App/components/Modal';
-import { Icon, Tooltip } from 'UI';
+import { Icon } from 'UI';
+import { shortDurationFromMs } from "App/date";
 import StackEventModal from '../StackEventModal';
 import ErrorDetailsModal from 'App/components/Dashboard/components/Errors/ErrorDetailsModal';
 import FetchDetails from 'Shared/FetchDetailsModal';
 import GraphQLDetailsModal from 'Shared/GraphQLDetailsModal';
+import { PlayerContext } from 'App/components/Session/playerContext';
+import { Popover } from 'antd';
+import {
+  shortenResourceName,
+  NetworkElement,
+  getFrustration,
+  FrustrationElement,
+  StackEventElement,
+  PerformanceElement,
+  ExceptionElement,
+} from './Dots'
 
 interface Props {
   pointer: any;
-  type: any;
+  type:
+    | 'ERRORS'
+    | 'EVENT'
+    | 'NETWORK'
+    | 'FRUSTRATIONS'
+    | 'EVENTS'
+    | 'PERFORMANCE'
   noClick?: boolean;
   fetchPresented?: boolean;
+  isGrouped?: boolean;
 }
 const TimelinePointer = React.memo((props: Props) => {
+  const { pointer, type, isGrouped } = props;
+  const { player } = React.useContext(PlayerContext);
+  const item = isGrouped ? pointer : pointer[0]
+
   const { showModal } = useModal();
   const createEventClickHandler = (pointer: any, type: any) => (e: any) => {
     if (props.noClick) return;
     e.stopPropagation();
-    Controls.jump(pointer.time);
+    player.jump(pointer.time);
     if (!type) {
       return;
     }
 
     if (type === 'ERRORS') {
-      showModal(<ErrorDetailsModal errorId={pointer.errorId} />, { right: true });
+      showModal(<ErrorDetailsModal errorId={pointer.errorId} />, {
+        right: true,
+        width: 1200,
+      });
     }
 
     if (type === 'EVENT') {
-      showModal(<StackEventModal event={pointer} />, { right: true });
+      showModal(<StackEventModal event={pointer} />, {
+        right: true,
+        width: 450,
+      });
     }
 
-    if (type === NETWORK) {
+    if (type === 'NETWORK') {
       if (pointer.tp === 'graph_ql') {
-        showModal(<GraphQLDetailsModal resource={pointer} />, { right: true });
+        showModal(<GraphQLDetailsModal resource={pointer} />, {
+          right: true,
+          width: 500,
+        });
       } else {
-        showModal(<FetchDetails resource={pointer} fetchPresented={props.fetchPresented} />, { right: true });
+        showModal(
+          <FetchDetails
+            resource={pointer}
+            fetchPresented={props.fetchPresented}
+          />,
+          { right: true, width: 500 }
+        );
       }
     }
-    // props.toggleBottomBlock(type);
   };
 
-  const renderNetworkElement = (item: any) => {
-    const name = item.name || '';
+  if (isGrouped) {
+    const onClick = createEventClickHandler(item[0], type);
+    return <GroupedIssue type={type} items={item} onClick={onClick} createEventClickHandler={createEventClickHandler} />;
+  }
+
+  if (type === 'NETWORK') {
     return (
-      <Tooltip
-        title={
-          <div className="">
-            <b>{item.success ? 'Slow resource: ' : '4xx/5xx Error:'}</b>
-            <br />
-            {name.length > 200
-              ? name.slice(0, 100) + ' ... ' + name.slice(-50)
-              : name.length > 200
-              ? item.name.slice(0, 100) + ' ... ' + item.name.slice(-50)
-              : item.name}
-          </div>
-        }
-        delay={0}
-        placement="top"
-      >
-        <div onClick={createEventClickHandler(item, NETWORK)} className="cursor-pointer">
-          <div className="h-4 w-4 rounded-full bg-red text-white font-bold flex items-center justify-center text-sm">
-            <span>!</span>
-          </div>
-        </div>
-      </Tooltip>
+      <NetworkElement
+        item={item}
+        createEventClickHandler={createEventClickHandler}
+      />
     );
-  };
-
-  const renderClickRageElement = (item: any) => {
+  }
+  if (type === 'FRUSTRATIONS') {
     return (
-      <Tooltip
-        title={
-          <div className="">
-            <b>{'Click Rage'}</b>
-          </div>
-        }
-        delay={0}
-        placement="top"
-      >
-        <div onClick={createEventClickHandler(item, null)} className="cursor-pointer">
-          <Icon className="bg-white" name="funnel/emoji-angry" color="red" size="16" />
-        </div>
-      </Tooltip>
+      <FrustrationElement
+        item={item}
+        createEventClickHandler={createEventClickHandler}
+      />
     );
-  };
-
-  const renderStackEventElement = (item: any) => {
+  }
+  if (type === 'ERRORS') {
     return (
-      <Tooltip
-        title={
-          <div className="">
-            <b>{'Stack Event'}</b>
-          </div>
-        }
-        delay={0}
-        placement="top"
-      >
-        <div
-          onClick={createEventClickHandler(item, 'EVENT')}
-          className="cursor-pointer w-1 h-4 bg-red"
-        >
-          {/* <Icon className="rounded-full bg-white" name="funnel/exclamation-circle-fill" color="red" size="16" /> */}
-        </div>
-      </Tooltip>
+      <ExceptionElement
+        item={item}
+        createEventClickHandler={createEventClickHandler}
+      />
     );
-  };
-
-  const renderPerformanceElement = (item: any) => {
+  }
+  if (type === 'EVENTS') {
     return (
-      <Tooltip
-        title={
-          <div className="">
-            <b>{item.type}</b>
-          </div>
-        }
-        delay={0}
-        placement="top"
-      >
-        <div
-          onClick={createEventClickHandler(item, EXCEPTIONS)}
-          className="cursor-pointer w-1 h-4 bg-red"
-        >
-          {/* <Icon className="rounded-full bg-white" name="funnel/exclamation-circle-fill" color="red" size="16" /> */}
-        </div>
-      </Tooltip>
+      <StackEventElement
+        item={item}
+        createEventClickHandler={createEventClickHandler}
+      />
     );
-  };
+  }
 
-  const renderExceptionElement = (item: any) => {
+  if (type === 'PERFORMANCE') {
     return (
-      <Tooltip
-        title={
-          <div className="">
-            <b>{'Exception'}</b>
-            <br />
-            <span>{item.message}</span>
-          </div>
-        }
-        delay={0}
-        placement="top"
-      >
-        <div onClick={createEventClickHandler(item, 'ERRORS')} className="cursor-pointer">
-          <div className="h-4 w-4 rounded-full bg-red text-white font-bold flex items-center justify-center text-sm">
-            <span>!</span>
-          </div>
-        </div>
-      </Tooltip>
+      <PerformanceElement
+        item={item}
+        createEventClickHandler={createEventClickHandler}
+      />
     );
-  };
+  }
 
-  const render = () => {
-    const { pointer, type } = props;
-    if (type === 'NETWORK') {
-      return renderNetworkElement(pointer);
-    }
-    if (type === 'CLICKRAGE') {
-      return renderClickRageElement(pointer);
-    }
-    if (type === 'ERRORS') {
-      return renderExceptionElement(pointer);
-    }
-    if (type === 'EVENTS') {
-      return renderStackEventElement(pointer);
-    }
-
-    if (type === 'PERFORMANCE') {
-      return renderPerformanceElement(pointer);
-    }
-  };
-  return <div>{render()}</div>;
+  return <div>unknown type</div>;
 });
+
+function GroupedIssue({
+  type,
+  items,
+  onClick,
+  createEventClickHandler,
+}: {
+  type: string;
+  items: Record<string, any>[];
+  onClick: () => void;
+  createEventClickHandler: any;
+}) {
+  const subStr = {
+    NETWORK: 'Network Issues',
+    ERRORS: 'Errors',
+    EVENTS: 'Events',
+    FRUSTRATIONS: 'Frustrations',
+  };
+  const title = `${items.length} ${subStr[type]} Observed`;
+
+  return (
+    <Popover
+      placement={'right'}
+      title={title}
+      content={
+        <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+          {items.map((pointer) => (
+            <div
+              key={pointer.time}
+              onClick={createEventClickHandler(pointer, type)}
+              className={'flex items-center gap-2 mb-1 cursor-pointer border-b border-transparent hover:border-gray-lightest'}
+            >
+              <div className={'text-disabled-text'}>@{shortDurationFromMs(pointer.time)}</div>
+              <RenderLineData type={type} item={pointer} />
+            </div>
+          ))}
+        </div>
+      }
+    >
+      <div
+        onClick={onClick}
+        className={
+          'h-5 w-5 cursor-pointer rounded-full bg-red text-white font-bold flex items-center justify-center text-xs'
+        }
+      >
+        {items.length}
+      </div>
+    </Popover>
+  );
+}
+
+function RenderLineData({ item, type }: any) {
+  if (type === 'FRUSTRATIONS') {
+    const elData = getFrustration(item);
+    return <>
+      <div><Icon name={elData.icon} color="black" size="16" /></div>
+      <div>{elData.name}</div>
+    </>
+  }
+  if (type === 'NETWORK') {
+    const name = item.success ? 'Slow resource' : '4xx/5xx Error';
+    return <>
+      <div>{name}</div>
+      <div>{shortenResourceName(item.name)}</div>
+    </>
+  }
+  if (type === 'EVENTS') {
+    return <div>{item.name || 'Stack Event'}</div>
+  }
+  if (type === 'PERFORMANCE') {
+    return <div>{item.type}</div>
+  }
+  if (type === 'ERRORS') {
+    return <div>{item.message}</div>
+  }
+  return <div>{JSON.stringify(item)}</div>
+}
 
 export default TimelinePointer;

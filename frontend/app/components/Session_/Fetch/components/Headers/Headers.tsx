@@ -1,5 +1,5 @@
 import React from 'react'
-import { NoContent, TextEllipsis } from 'UI'
+import { NoContent } from 'UI'
 import stl from './headers.module.css'
 import AnimatedSVG, { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
 
@@ -9,8 +9,8 @@ function Headers(props) {
       <NoContent
         title={
           <div className="flex flex-col items-center justify-center">
-            <AnimatedSVG name={ICONS.NO_RESULTS} size="170" />
-            <div className="mt-6 text-2xl">No data available.</div>
+            <AnimatedSVG name={ICONS.NO_RESULTS} size={30} />
+            <div className="mt-4">No data available for the selected period.</div>
           </div>
         }
         size="small"

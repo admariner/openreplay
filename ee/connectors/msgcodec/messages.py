@@ -6,34 +6,6 @@ class Message(ABC):
     pass
 
 
-class BatchMeta(Message):
-    __id__ = 80
-
-    def __init__(self, page_no, first_index, timestamp):
-        self.page_no = page_no
-        self.first_index = first_index
-        self.timestamp = timestamp
-
-
-class BatchMetadata(Message):
-    __id__ = 81
-
-    def __init__(self, version, page_no, first_index, timestamp, location):
-        self.version = version
-        self.page_no = page_no
-        self.first_index = first_index
-        self.timestamp = timestamp
-        self.location = location
-
-
-class PartitionedMessage(Message):
-    __id__ = 82
-
-    def __init__(self, part_no, part_total):
-        self.part_no = part_no
-        self.part_total = part_total
-
-
 class Timestamp(Message):
     __id__ = 0
 
@@ -70,7 +42,7 @@ class SessionEndDeprecated(Message):
         self.timestamp = timestamp
 
 
-class SetPageLocation(Message):
+class SetPageLocationDeprecated(Message):
     __id__ = 4
 
     def __init__(self, url, referrer, navigation_start):
@@ -213,6 +185,20 @@ class MouseMove(Message):
         self.y = y
 
 
+class NetworkRequestDeprecated(Message):
+    __id__ = 21
+
+    def __init__(self, type, method, url, request, response, status, timestamp, duration):
+        self.type = type
+        self.method = method
+        self.url = url
+        self.request = request
+        self.response = response
+        self.status = status
+        self.timestamp = timestamp
+        self.duration = duration
+
+
 class ConsoleLog(Message):
     __id__ = 22
 
@@ -265,7 +251,7 @@ class IntegrationEvent(Message):
         self.payload = payload
 
 
-class RawCustomEvent(Message):
+class CustomEvent(Message):
     __id__ = 27
 
     def __init__(self, name, payload):
@@ -295,7 +281,7 @@ class Metadata(Message):
         self.value = value
 
 
-class PageEvent(Message):
+class PageEventDeprecated(Message):
     __id__ = 31
 
     def __init__(self, message_id, timestamp, url, referrer, loaded, request_start, response_start, response_end, dom_content_loaded_event_start, dom_content_loaded_event_end, load_event_start, load_event_end, first_paint, first_contentful_paint, speed_index, visually_complete, time_to_interactive):
@@ -329,43 +315,28 @@ class InputEvent(Message):
         self.label = label
 
 
-class ClickEvent(Message):
+class PageEvent(Message):
     __id__ = 33
 
-    def __init__(self, message_id, timestamp, hesitation_time, label, selector):
+    def __init__(self, message_id, timestamp, url, referrer, loaded, request_start, response_start, response_end, dom_content_loaded_event_start, dom_content_loaded_event_end, load_event_start, load_event_end, first_paint, first_contentful_paint, speed_index, visually_complete, time_to_interactive, web_vitals):
         self.message_id = message_id
         self.timestamp = timestamp
-        self.hesitation_time = hesitation_time
-        self.label = label
-        self.selector = selector
-
-
-class ResourceEvent(Message):
-    __id__ = 35
-
-    def __init__(self, message_id, timestamp, duration, ttfb, header_size, encoded_body_size, decoded_body_size, url, type, success, method, status):
-        self.message_id = message_id
-        self.timestamp = timestamp
-        self.duration = duration
-        self.ttfb = ttfb
-        self.header_size = header_size
-        self.encoded_body_size = encoded_body_size
-        self.decoded_body_size = decoded_body_size
         self.url = url
-        self.type = type
-        self.success = success
-        self.method = method
-        self.status = status
-
-
-class CustomEvent(Message):
-    __id__ = 36
-
-    def __init__(self, message_id, timestamp, name, payload):
-        self.message_id = message_id
-        self.timestamp = timestamp
-        self.name = name
-        self.payload = payload
+        self.referrer = referrer
+        self.loaded = loaded
+        self.request_start = request_start
+        self.response_start = response_start
+        self.response_end = response_end
+        self.dom_content_loaded_event_start = dom_content_loaded_event_start
+        self.dom_content_loaded_event_end = dom_content_loaded_event_end
+        self.load_event_start = load_event_start
+        self.load_event_end = load_event_end
+        self.first_paint = first_paint
+        self.first_contentful_paint = first_contentful_paint
+        self.speed_index = speed_index
+        self.visually_complete = visually_complete
+        self.time_to_interactive = time_to_interactive
+        self.web_vitals = web_vitals
 
 
 class CSSInsertRule(Message):
@@ -423,16 +394,7 @@ class StateAction(Message):
         self.type = type
 
 
-class StateActionEvent(Message):
-    __id__ = 43
-
-    def __init__(self, message_id, timestamp, type):
-        self.message_id = message_id
-        self.timestamp = timestamp
-        self.type = type
-
-
-class Redux(Message):
+class ReduxDeprecated(Message):
     __id__ = 44
 
     def __init__(self, action, state, duration):
@@ -466,14 +428,15 @@ class NgRx(Message):
         self.duration = duration
 
 
-class GraphQL(Message):
+class GraphQLDeprecated(Message):
     __id__ = 48
 
-    def __init__(self, operation_kind, operation_name, variables, response):
+    def __init__(self, operation_kind, operation_name, variables, response, duration):
         self.operation_kind = operation_kind
         self.operation_name = operation_name
         self.variables = variables
         self.response = response
+        self.duration = duration
 
 
 class PerformanceTrack(Message):
@@ -486,40 +449,41 @@ class PerformanceTrack(Message):
         self.used_js_heap_size = used_js_heap_size
 
 
-class GraphQLEvent(Message):
+class StringDictDeprecated(Message):
     __id__ = 50
 
-    def __init__(self, message_id, timestamp, operation_kind, operation_name, variables, response):
-        self.message_id = message_id
-        self.timestamp = timestamp
-        self.operation_kind = operation_kind
-        self.operation_name = operation_name
-        self.variables = variables
-        self.response = response
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
 
 
-class FetchEvent(Message):
+class SetNodeAttributeDictDeprecated(Message):
     __id__ = 51
 
-    def __init__(self, message_id, timestamp, method, url, request, response, status, duration):
-        self.message_id = message_id
-        self.timestamp = timestamp
-        self.method = method
-        self.url = url
-        self.request = request
-        self.response = response
-        self.status = status
-        self.duration = duration
+    def __init__(self, id, name_key, value_key):
+        self.id = id
+        self.name_key = name_key
+        self.value_key = value_key
 
 
-class DOMDrop(Message):
+class StringDict(Message):
+    __id__ = 43
+
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
+
+
+class SetNodeAttributeDict(Message):
     __id__ = 52
 
-    def __init__(self, timestamp):
-        self.timestamp = timestamp
+    def __init__(self, id, name, value):
+        self.id = id
+        self.name = name
+        self.value = value
 
 
-class ResourceTiming(Message):
+class ResourceTimingDeprecated(Message):
     __id__ = 53
 
     def __init__(self, timestamp, duration, ttfb, header_size, encoded_body_size, decoded_body_size, url, initiator):
@@ -617,7 +581,7 @@ class SetCSSDataURLBased(Message):
         self.base_url = base_url
 
 
-class IssueEvent(Message):
+class IssueEventDeprecated(Message):
     __id__ = 62
 
     def __init__(self, message_id, timestamp, type, context_string, context, payload):
@@ -663,6 +627,18 @@ class CSSInsertRuleURLBased(Message):
 
 
 class MouseClick(Message):
+    __id__ = 68
+
+    def __init__(self, id, hesitation_time, label, selector, normalized_x, normalized_y):
+        self.id = id
+        self.hesitation_time = hesitation_time
+        self.label = label
+        self.selector = selector
+        self.normalized_x = normalized_x
+        self.normalized_y = normalized_y
+
+
+class MouseClickDeprecated(Message):
     __id__ = 69
 
     def __init__(self, id, hesitation_time, label, selector):
@@ -740,14 +716,6 @@ class AdoptedSSRemoveOwner(Message):
         self.id = id
 
 
-class Zustand(Message):
-    __id__ = 79
-
-    def __init__(self, mutation, state):
-        self.mutation = mutation
-        self.state = state
-
-
 class JSException(Message):
     __id__ = 78
 
@@ -756,6 +724,201 @@ class JSException(Message):
         self.message = message
         self.payload = payload
         self.metadata = metadata
+
+
+class Zustand(Message):
+    __id__ = 79
+
+    def __init__(self, mutation, state):
+        self.mutation = mutation
+        self.state = state
+
+
+class BatchMeta(Message):
+    __id__ = 80
+
+    def __init__(self, page_no, first_index, timestamp):
+        self.page_no = page_no
+        self.first_index = first_index
+        self.timestamp = timestamp
+
+
+class BatchMetadata(Message):
+    __id__ = 81
+
+    def __init__(self, version, page_no, first_index, timestamp, location):
+        self.version = version
+        self.page_no = page_no
+        self.first_index = first_index
+        self.timestamp = timestamp
+        self.location = location
+
+
+class PartitionedMessage(Message):
+    __id__ = 82
+
+    def __init__(self, part_no, part_total):
+        self.part_no = part_no
+        self.part_total = part_total
+
+
+class NetworkRequest(Message):
+    __id__ = 83
+
+    def __init__(self, type, method, url, request, response, status, timestamp, duration, transferred_body_size):
+        self.type = type
+        self.method = method
+        self.url = url
+        self.request = request
+        self.response = response
+        self.status = status
+        self.timestamp = timestamp
+        self.duration = duration
+        self.transferred_body_size = transferred_body_size
+
+
+class WSChannel(Message):
+    __id__ = 84
+
+    def __init__(self, ch_type, channel_name, data, timestamp, dir, message_type):
+        self.ch_type = ch_type
+        self.channel_name = channel_name
+        self.data = data
+        self.timestamp = timestamp
+        self.dir = dir
+        self.message_type = message_type
+
+
+class InputChange(Message):
+    __id__ = 112
+
+    def __init__(self, id, value, value_masked, label, hesitation_time, input_duration):
+        self.id = id
+        self.value = value
+        self.value_masked = value_masked
+        self.label = label
+        self.hesitation_time = hesitation_time
+        self.input_duration = input_duration
+
+
+class SelectionChange(Message):
+    __id__ = 113
+
+    def __init__(self, selection_start, selection_end, selection):
+        self.selection_start = selection_start
+        self.selection_end = selection_end
+        self.selection = selection
+
+
+class MouseThrashing(Message):
+    __id__ = 114
+
+    def __init__(self, timestamp):
+        self.timestamp = timestamp
+
+
+class UnbindNodes(Message):
+    __id__ = 115
+
+    def __init__(self, total_removed_percent):
+        self.total_removed_percent = total_removed_percent
+
+
+class ResourceTiming(Message):
+    __id__ = 116
+
+    def __init__(self, timestamp, duration, ttfb, header_size, encoded_body_size, decoded_body_size, url, initiator, transferred_size, cached):
+        self.timestamp = timestamp
+        self.duration = duration
+        self.ttfb = ttfb
+        self.header_size = header_size
+        self.encoded_body_size = encoded_body_size
+        self.decoded_body_size = decoded_body_size
+        self.url = url
+        self.initiator = initiator
+        self.transferred_size = transferred_size
+        self.cached = cached
+
+
+class TabChange(Message):
+    __id__ = 117
+
+    def __init__(self, tab_id):
+        self.tab_id = tab_id
+
+
+class TabData(Message):
+    __id__ = 118
+
+    def __init__(self, tab_id):
+        self.tab_id = tab_id
+
+
+class CanvasNode(Message):
+    __id__ = 119
+
+    def __init__(self, node_id, timestamp):
+        self.node_id = node_id
+        self.timestamp = timestamp
+
+
+class TagTrigger(Message):
+    __id__ = 120
+
+    def __init__(self, tag_id):
+        self.tag_id = tag_id
+
+
+class Redux(Message):
+    __id__ = 121
+
+    def __init__(self, action, state, duration, action_time):
+        self.action = action
+        self.state = state
+        self.duration = duration
+        self.action_time = action_time
+
+
+class SetPageLocation(Message):
+    __id__ = 122
+
+    def __init__(self, url, referrer, navigation_start, document_title):
+        self.url = url
+        self.referrer = referrer
+        self.navigation_start = navigation_start
+        self.document_title = document_title
+
+
+class GraphQL(Message):
+    __id__ = 123
+
+    def __init__(self, operation_kind, operation_name, variables, response, duration):
+        self.operation_kind = operation_kind
+        self.operation_name = operation_name
+        self.variables = variables
+        self.response = response
+        self.duration = duration
+
+
+class WebVitals(Message):
+    __id__ = 124
+
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+
+class IssueEvent(Message):
+    __id__ = 125
+
+    def __init__(self, message_id, timestamp, type, context_string, context, payload, url):
+        self.message_id = message_id
+        self.timestamp = timestamp
+        self.type = type
+        self.context_string = context_string
+        self.context = context
+        self.payload = payload
+        self.url = url
 
 
 class SessionEnd(Message):
@@ -774,16 +937,7 @@ class SessionSearch(Message):
         self.partition = partition
 
 
-class IOSBatchMeta(Message):
-    __id__ = 107
-
-    def __init__(self, timestamp, length, first_index):
-        self.timestamp = timestamp
-        self.length = length
-        self.first_index = first_index
-
-
-class IOSSessionStart(Message):
+class MobileSessionStart(Message):
     __id__ = 90
 
     def __init__(self, timestamp, project_id, tracker_version, rev_id, user_uuid, user_os, user_os_version, user_device, user_device_type, user_country):
@@ -799,14 +953,14 @@ class IOSSessionStart(Message):
         self.user_country = user_country
 
 
-class IOSSessionEnd(Message):
+class MobileSessionEnd(Message):
     __id__ = 91
 
     def __init__(self, timestamp):
         self.timestamp = timestamp
 
 
-class IOSMetadata(Message):
+class MobileMetadata(Message):
     __id__ = 92
 
     def __init__(self, timestamp, length, key, value):
@@ -816,7 +970,7 @@ class IOSMetadata(Message):
         self.value = value
 
 
-class IOSCustomEvent(Message):
+class MobileEvent(Message):
     __id__ = 93
 
     def __init__(self, timestamp, length, name, payload):
@@ -826,25 +980,25 @@ class IOSCustomEvent(Message):
         self.payload = payload
 
 
-class IOSUserID(Message):
+class MobileUserID(Message):
     __id__ = 94
 
-    def __init__(self, timestamp, length, value):
+    def __init__(self, timestamp, length, id):
         self.timestamp = timestamp
         self.length = length
-        self.value = value
+        self.id = id
 
 
-class IOSUserAnonymousID(Message):
+class MobileUserAnonymousID(Message):
     __id__ = 95
 
-    def __init__(self, timestamp, length, value):
+    def __init__(self, timestamp, length, id):
         self.timestamp = timestamp
         self.length = length
-        self.value = value
+        self.id = id
 
 
-class IOSScreenChanges(Message):
+class MobileScreenChanges(Message):
     __id__ = 96
 
     def __init__(self, timestamp, length, x, y, width, height):
@@ -856,7 +1010,7 @@ class IOSScreenChanges(Message):
         self.height = height
 
 
-class IOSCrash(Message):
+class MobileCrash(Message):
     __id__ = 97
 
     def __init__(self, timestamp, length, name, reason, stacktrace):
@@ -867,27 +1021,18 @@ class IOSCrash(Message):
         self.stacktrace = stacktrace
 
 
-class IOSScreenEnter(Message):
+class MobileViewComponentEvent(Message):
     __id__ = 98
 
-    def __init__(self, timestamp, length, title, view_name):
+    def __init__(self, timestamp, length, screen_name, view_name, visible):
         self.timestamp = timestamp
         self.length = length
-        self.title = title
+        self.screen_name = screen_name
         self.view_name = view_name
+        self.visible = visible
 
 
-class IOSScreenLeave(Message):
-    __id__ = 99
-
-    def __init__(self, timestamp, length, title, view_name):
-        self.timestamp = timestamp
-        self.length = length
-        self.title = title
-        self.view_name = view_name
-
-
-class IOSClickEvent(Message):
+class MobileClickEvent(Message):
     __id__ = 100
 
     def __init__(self, timestamp, length, label, x, y):
@@ -898,7 +1043,7 @@ class IOSClickEvent(Message):
         self.y = y
 
 
-class IOSInputEvent(Message):
+class MobileInputEvent(Message):
     __id__ = 101
 
     def __init__(self, timestamp, length, value, value_masked, label):
@@ -909,7 +1054,7 @@ class IOSInputEvent(Message):
         self.label = label
 
 
-class IOSPerformanceEvent(Message):
+class MobilePerformanceEvent(Message):
     __id__ = 102
 
     def __init__(self, timestamp, length, name, value):
@@ -919,7 +1064,7 @@ class IOSPerformanceEvent(Message):
         self.value = value
 
 
-class IOSLog(Message):
+class MobileLog(Message):
     __id__ = 103
 
     def __init__(self, timestamp, length, severity, content):
@@ -929,7 +1074,7 @@ class IOSLog(Message):
         self.content = content
 
 
-class IOSInternalError(Message):
+class MobileInternalError(Message):
     __id__ = 104
 
     def __init__(self, timestamp, length, content):
@@ -938,22 +1083,43 @@ class IOSInternalError(Message):
         self.content = content
 
 
-class IOSNetworkCall(Message):
+class MobileNetworkCall(Message):
     __id__ = 105
 
-    def __init__(self, timestamp, length, duration, headers, body, url, success, method, status):
+    def __init__(self, timestamp, length, type, method, url, request, response, status, duration):
         self.timestamp = timestamp
         self.length = length
-        self.duration = duration
-        self.headers = headers
-        self.body = body
-        self.url = url
-        self.success = success
+        self.type = type
         self.method = method
+        self.url = url
+        self.request = request
+        self.response = response
         self.status = status
+        self.duration = duration
 
 
-class IOSPerformanceAggregated(Message):
+class MobileSwipeEvent(Message):
+    __id__ = 106
+
+    def __init__(self, timestamp, length, label, x, y, direction):
+        self.timestamp = timestamp
+        self.length = length
+        self.label = label
+        self.x = x
+        self.y = y
+        self.direction = direction
+
+
+class MobileBatchMeta(Message):
+    __id__ = 107
+
+    def __init__(self, timestamp, length, first_index):
+        self.timestamp = timestamp
+        self.length = length
+        self.first_index = first_index
+
+
+class MobilePerformanceAggregated(Message):
     __id__ = 110
 
     def __init__(self, timestamp_start, timestamp_end, min_fps, avg_fps, max_fps, min_cpu, avg_cpu, max_cpu, min_memory, avg_memory, max_memory, min_battery, avg_battery, max_battery):
@@ -973,7 +1139,7 @@ class IOSPerformanceAggregated(Message):
         self.max_battery = max_battery
 
 
-class IOSIssueEvent(Message):
+class MobileIssueEvent(Message):
     __id__ = 111
 
     def __init__(self, timestamp, type, context_string, context, payload):

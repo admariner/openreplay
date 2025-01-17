@@ -1,6 +1,6 @@
-import { makeAutoObservable, runInAction, action } from 'mobx';
-import moment from 'moment';
-import { SKIP_TO_ISSUE, TIMEZONE, DURATION_FILTER } from 'App/constants/storageKeys';
+import { makeAutoObservable, runInAction } from 'mobx';
+import { SKIP_TO_ISSUE, TIMEZONE, TIMEZONE_LOCAL, SHOWN_TIMEZONE, DURATION_FILTER, MOUSE_TRAIL } from 'App/constants/storageKeys';
+import { DateTime, Settings } from 'luxon'
 
 export type Timezone = {
     label: string;
@@ -13,84 +13,137 @@ const defaultDurationFilter = {
     countType: 'sec'
 }
 
+const negativeExceptions = {
+    4: ['-04:30'],
+    3: ['-03:30'],
+
+}
+const exceptions = {
+    3: ['+03:30'],
+    4: ['+04:30'],
+    5: ['+05:30', '+05:45'],
+    6: ['+06:30'],
+    9: ['+09:30']
+}
+
 export const generateGMTZones = (): Timezone[] => {
     const timezones: Timezone[] = [];
 
-    const positiveNumbers = [...Array(12).keys()];
-    const negativeNumbers = [...Array(12).keys()].reverse();
+    const positiveNumbers = [...Array(13).keys()];
+    const negativeNumbers = [...Array(13).keys()].reverse();
     negativeNumbers.pop(); // remove trailing zero since we have one in positive numbers array
 
     const combinedArray = [...negativeNumbers, ...positiveNumbers];
 
     for (let i = 0; i < combinedArray.length; i++) {
-        let symbol = i < 11 ? '-' : '+';
-        let isUTC = i === 11;
-        let value = String(combinedArray[i]).padStart(2, '0');
+        let symbol = i < 12 ? '-' : '+';
+        let isUTC = i === 12;
+        const item = combinedArray[i]
+        let value = String(item).padStart(2, '0');
 
-        let tz = `UTC ${symbol}${String(combinedArray[i]).padStart(2, '0')}:00`;
+        let tz = `UTC ${symbol}${String(item).padStart(2, '0')}:00`;
 
         let dropdownValue = `UTC${symbol}${value}`;
         timezones.push({ label: tz, value: isUTC ? 'UTC' : dropdownValue });
+
+        // @ts-ignore
+        const negativeMatch = negativeExceptions[item], positiveMatch = exceptions[item]
+        if (i < 11 && negativeMatch) {
+            negativeMatch.forEach((str: string) => {
+                timezones.push({ label: `UTC ${str}`, value: `UTC${str}`})
+            })
+        } else if (i > 11 && positiveMatch) {
+            positiveMatch.forEach((str: string) => {
+                timezones.push({ label: `UTC ${str}`, value: `UTC${str}`})
+            })
+        }
     }
 
-    timezones.splice(17, 0, { label: 'GMT +05:30', value: 'UTC+05:30' });
     return timezones;
 };
 
 export default class SessionSettings {
-    defaultTimezones = [...generateGMTZones()]
-    skipToIssue: boolean = localStorage.getItem(SKIP_TO_ISSUE) === 'true';
-    timezone: Timezone;
-    durationFilter: any = JSON.parse(localStorage.getItem(DURATION_FILTER) || JSON.stringify(defaultDurationFilter));
-    captureRate: string = '0';
-    captureAll: boolean = false;
+  defaultTimezones = [...generateGMTZones()];
+  skipToIssue: boolean = localStorage.getItem(SKIP_TO_ISSUE) === 'true';
+  timezone: Timezone;
+  durationFilter: any = JSON.parse(
+    localStorage.getItem(DURATION_FILTER) || JSON.stringify(defaultDurationFilter)
+  );
+  captureRate: string = '0';
+  conditionalCapture: boolean = false;
+  captureConditions: { name: string; captureRate: number; filters: any[] }[] = [];
+  mouseTrail: boolean = localStorage.getItem(MOUSE_TRAIL) !== 'false';
+  shownTimezone: 'user' | 'local';
+  usingLocal: boolean = false;
 
-    constructor() {
-        // compatibility fix for old timezone storage
-        // TODO: remove after a while (1.7.1?)
-        const userTimezoneOffset = moment().format('Z');
-        const defaultTimezone = this.defaultTimezones.find(tz => tz.value.includes('UTC' + userTimezoneOffset.slice(0,3))) || { label: 'Local', value: `UTC${userTimezoneOffset}` };
+  constructor() {
+    const userTimezoneOffset = DateTime.local().toFormat('ZZ')
+    const defaultTimezone = this.defaultTimezones.find((tz) =>
+      tz.value === 'UTC' + userTimezoneOffset.slice(0, 3)
+    ) || { label: 'Local', value: `UTC${userTimezoneOffset}` };
 
-        this.timezoneFix(defaultTimezone);
-        this.timezone = JSON.parse(localStorage.getItem(TIMEZONE)) || defaultTimezone;
-        makeAutoObservable(this);
+    const savedTz = localStorage.getItem(TIMEZONE)
+    let isLocal = localStorage.getItem(TIMEZONE_LOCAL) === 'true';
+    if (!savedTz) {
+      localStorage.setItem(TIMEZONE, JSON.stringify(defaultTimezone));
+      localStorage.setItem(TIMEZONE_LOCAL, 'true');
+      isLocal = true;
+    }
+    if (isLocal) {
+      this.timezone = defaultTimezone;
+      this.usingLocal = true;
+    } else {
+      this.timezone = savedTz ? JSON.parse(savedTz) : defaultTimezone;
+    }
+    Settings.defaultZone = this.timezone.value;
+    if (localStorage.getItem(MOUSE_TRAIL) === null) {
+      localStorage.setItem(MOUSE_TRAIL, 'true');
     }
 
-    merge = (settings: any) => {
-        for (const key in settings) {
-            if (settings.hasOwnProperty(key)) {
-                this.updateKey(key, settings[key]);
-            }
-        }
-    };
+    this.shownTimezone = localStorage.getItem(SHOWN_TIMEZONE) === 'user' ? 'user' : 'local';
+    makeAutoObservable(this);
+  }
 
-    changeCaptureRate = (rate: string) => {
-        if (!rate) return (this.captureRate = '0');
-        // react do no see the difference between 01 and 1 decimals, this is why we have to use string casting
-        if (parseInt(rate, 10) <= 100) this.captureRate = `${parseInt(rate, 10)}`;
-    };
-
-    changeCaptureAll = (all: boolean) => {
-        this.captureAll = all;
-    };
-
-    timezoneFix(defaultTimezone: Record<string, string>) {
-        if (localStorage.getItem(TIMEZONE) === '[object Object]' || !localStorage.getItem(TIMEZONE)) {
-            localStorage.setItem(TIMEZONE, JSON.stringify(defaultTimezone));
-        }
+  merge = (settings: any) => {
+    for (const key in settings) {
+      if (settings.hasOwnProperty(key)) {
+        this.updateKey(key, settings[key]);
+      }
     }
+  };
 
-    updateKey = (key: string, value: any) => {
-        runInAction(() => {
-            this[key] = value;
-        });
+  changeCaptureRate = (rate: string) => {
+    if (!rate) return (this.captureRate = '0');
+    // react do no see the difference between 01 and 1 decimals, this is why we have to use string casting
+    if (parseInt(rate, 10) <= 100) this.captureRate = `${parseInt(rate, 10)}`;
+  };
 
-        if (key === 'captureRate' || key === 'captureAll') return;
+  changeConditionalCapture = (all: boolean) => {
+    this.conditionalCapture = all;
+  };
 
-        if (key === 'durationFilter' || key === 'timezone') {
-            localStorage.setItem(`__$session-${key}$__`, JSON.stringify(value));
-        } else {
-            localStorage.setItem(`__$session-${key}$__`, value);
-        }
-    };
+  updateTimezone = (value: Timezone, local?: boolean) => {
+    this.timezone = value;
+    Settings.defaultZone = value.value;
+    localStorage.setItem(TIMEZONE, JSON.stringify(value));
+    localStorage.setItem(TIMEZONE_LOCAL, local ? 'true' : 'false');
+    this.usingLocal = local || false;
+  }
+
+  updateKey = (key: string, value: any) => {
+    runInAction(() => {
+      // @ts-ignore
+      this[key] = value;
+    });
+
+    if (key === 'captureRate' || key === 'captureAll') return;
+    if (key === 'shownTimezone') {
+      return localStorage.setItem(SHOWN_TIMEZONE, value as string);
+    }
+    if (key === 'durationFilter' || key === 'timezone') {
+      localStorage.setItem(`__$session-${key}$__`, JSON.stringify(value));
+    } else {
+      localStorage.setItem(`__$session-${key}$__`, value);
+    }
+  };
 }

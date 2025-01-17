@@ -51,7 +51,7 @@ service:
     metrics: 8888
 
 serviceMonitor:
-  enabled: true
+  enabled: false
   additionalLabels:
     release: observability
   scrapeConfigs:
@@ -95,9 +95,7 @@ env:
   captcha_key: ''
   async_Token: ''
   announcement_url: ''
-  jwt_secret: "SetARandomStringHere"
   jwt_algorithm: HS512
-  jwt_exp_delta_seconds: '2592000'
   # Enable logging for python app
   # Ref: https://stackoverflow.com/questions/43969743/logs-in-kubernetes-pod-not-showing-up
   PYTHONUNBUFFERED: '0'
@@ -110,6 +108,7 @@ env:
   idp_tenantKey: ''
   assist_secret: ''
   iceServers: ''
+  LOGLEVEL: INFO
 
 
 nodeSelector: {}
@@ -121,11 +120,11 @@ affinity: {}
 healthCheck:
   livenessProbe:
     httpGet:
-      path: /
+      path: /signup
       port: 8000
-    initialDelaySeconds: 100
-    periodSeconds: 15
-    timeoutSeconds: 10
+    initialDelaySeconds: 120
+    periodSeconds: 30
+    timeoutSeconds: 15
 
 
 pvc:
@@ -134,7 +133,7 @@ pvc:
   # For example
   # name: openreplay-efs
   name: "{{ .Values.global.pvcRWXName }}"
-  hostMountPath: /openreplay/storage/nfs
+  hostMountPath: "{{ .Values.global.orTmpDir }}"
 
 persistence: {}
   # # Spec of spec.template.spec.containers[*].volumeMounts

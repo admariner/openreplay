@@ -43,6 +43,32 @@ spec:
           {{- .Values.healthCheck | toYaml | nindent 10}}
           {{- end}}
           env:
+            - name: AWS_ACCESS_KEY_ID
+              {{- if .Values.global.s3.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.s3.existingSecret }}
+                  key: access-key
+              {{- else }}
+              value: {{ .Values.global.s3.accessKey }}
+              {{- end }}
+            - name: AWS_SECRET_ACCESS_KEY
+              {{- if .Values.global.s3.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.s3.existingSecret }}
+                  key: secret-key
+              {{- else }}
+              value: {{ .Values.global.s3.secretKey }}
+              {{- end }}
+            - name: AWS_ENDPOINT
+              value: '{{ .Values.global.s3.endpoint }}'
+            - name: AWS_REGION
+              value: '{{ .Values.global.s3.region }}'
+            - name: BUCKET_NAME
+              value: {{ .Values.global.s3.recordingsBucket }}
+            - name: JWT_SECRET
+              value: '{{ .Values.global.jwtSecret }}'
             - name: LICENSE_KEY
               value: '{{ .Values.global.enterpriseEditionLicense }}'
             - name: KAFKA_SERVERS
@@ -61,6 +87,10 @@ spec:
             - name: POSTGRES_STRING
               value: 'postgres://{{ .Values.global.postgresql.postgresqlUser }}:$(pg_password)@{{ .Values.global.postgresql.postgresqlHost }}:{{ .Values.global.postgresql.postgresqlPort }}/{{ .Values.global.postgresql.postgresqlDatabase }}'
             {{- include "openreplay.env.redis_string" .Values.global.redis | nindent 12 }}
+            {{- range $key, $val := .Values.global.env }}
+            - name: {{ $key }}
+              value: '{{ $val }}'
+            {{- end }}
             {{- range $key, $val := .Values.env }}
             - name: {{ $key }}
               value: '{{ $val }}'

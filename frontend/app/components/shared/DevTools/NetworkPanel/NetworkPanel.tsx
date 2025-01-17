@@ -1,19 +1,31 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Tooltip, Tabs, Input, NoContent, Icon, Toggler } from 'UI';
-import { getRE } from 'App/utils';
-import Resource, { TYPES } from 'Types/session/resource';
-import { formatBytes } from 'App/utils';
-import { formatMs } from 'App/date';
+import { ResourceType, Timed } from 'Player';
+import MobilePlayer from 'Player/mobile/IOSPlayer';
+import WebPlayer from 'Player/web/WebPlayer';
+import { observer } from 'mobx-react-lite';
+import React, { useMemo, useState } from 'react';
 
-import TimeTable from '../TimeTable';
+import { useModal } from 'App/components/Modal';
+import {
+  MobilePlayerContext,
+  PlayerContext,
+} from 'App/components/Session/playerContext';
+import { formatMs } from 'App/date';
+import { useStore } from 'App/mstore';
+import { formatBytes } from 'App/utils';
+import { Icon, NoContent, Tabs } from 'UI';
+import { Tooltip, Input, Switch, Form } from 'antd';
+import { SearchOutlined, InfoCircleOutlined } from '@ant-design/icons';
+
+import FetchDetailsModal from 'Shared/FetchDetailsModal';
+import { WsChannel } from 'App/player/web/messages';
+
 import BottomBlock from '../BottomBlock';
 import InfoLine from '../BottomBlock/InfoLine';
-import { Duration } from 'luxon';
-import { connectPlayer, jump } from 'Player';
-import { useModal } from 'App/components/Modal';
-import FetchDetailsModal from 'Shared/FetchDetailsModal';
-import { useStore } from 'App/mstore';
-import { useObserver } from 'mobx-react-lite';
+import TabSelector from '../TabSelector';
+import TimeTable from '../TimeTable';
+import useAutoscroll, { getLastItemTime } from '../useAutoscroll';
+import { useRegExListFilterMemo, useTabListFilterMemo } from '../useListFilter';
+import WSPanel from './WSPanel';
 
 const INDEX_KEY = 'network';
 
@@ -24,28 +36,27 @@ const CSS = 'css';
 const IMG = 'img';
 const MEDIA = 'media';
 const OTHER = 'other';
+const WS = 'websocket';
 
-const TAB_TO_TYPE_MAP: any = {
-  [XHR]: TYPES.XHR,
-  [JS]: TYPES.JS,
-  [CSS]: TYPES.CSS,
-  [IMG]: TYPES.IMG,
-  [MEDIA]: TYPES.MEDIA,
-  [OTHER]: TYPES.OTHER,
+const TYPE_TO_TAB = {
+  [ResourceType.XHR]: XHR,
+  [ResourceType.FETCH]: XHR,
+  [ResourceType.SCRIPT]: JS,
+  [ResourceType.CSS]: CSS,
+  [ResourceType.IMG]: IMG,
+  [ResourceType.MEDIA]: MEDIA,
+  [ResourceType.WS]: WS,
+  [ResourceType.OTHER]: OTHER,
 };
-const TABS: any = [ALL, XHR, JS, CSS, IMG, MEDIA, OTHER].map((tab) => ({
+
+const TAP_KEYS = [ALL, XHR, JS, CSS, IMG, MEDIA, OTHER, WS] as const;
+export const NETWORK_TABS = TAP_KEYS.map((tab) => ({
   text: tab === 'xhr' ? 'Fetch/XHR' : tab,
   key: tab,
 }));
 
 const DOM_LOADED_TIME_COLOR = 'teal';
 const LOAD_TIME_COLOR = 'red';
-
-function compare(a: any, b: any, key: string) {
-  if (a[key] > b[key]) return 1;
-  if (a[key] < b[key]) return -1;
-  return 0;
-}
 
 export function renderType(r: any) {
   return (
@@ -63,14 +74,6 @@ export function renderName(r: any) {
   );
 }
 
-export function renderStart(r: any) {
-  return (
-    <div className="flex justify-between items-center grow-0 w-full">
-      <span>{Duration.fromMillis(r.time).toFormat('mm:ss.SSS')}</span>
-    </div>
-  );
-}
-
 function renderSize(r: any) {
   if (r.responseBodySize) return formatBytes(r.responseBodySize);
   let triggerText;
@@ -80,15 +83,15 @@ function renderSize(r: any) {
     content = 'Not captured';
   } else {
     const headerSize = r.headerSize || 0;
-    const encodedSize = r.encodedBodySize || 0;
-    const transferred = headerSize + encodedSize;
     const showTransferred = r.headerSize != null;
 
     triggerText = formatBytes(r.decodedBodySize);
     content = (
       <ul>
         {showTransferred && (
-          <li>{`${formatBytes(r.encodedBodySize + headerSize)} transfered over network`}</li>
+          <li>{`${formatBytes(
+            r.encodedBodySize + headerSize
+          )} transferred over network`}</li>
         )}
         <li>{`Resource size: ${formatBytes(r.decodedBodySize)} `}</li>
       </ul>
@@ -106,16 +109,13 @@ export function renderDuration(r: any) {
   if (!r.success) return 'x';
 
   const text = `${Math.floor(r.duration)}ms`;
-  if (!r.isRed() && !r.isYellow()) return text;
+  if (!r.isRed && !r.isYellow) return text;
 
   let tooltipText;
-  let className = 'w-full h-full flex items-center ';
-  if (r.isYellow()) {
+  if (r.isYellow) {
     tooltipText = 'Slower than average';
-    className += 'warn color-orange';
   } else {
     tooltipText = 'Much slower than average';
-    className += 'error color-red';
   }
 
   return (
@@ -125,201 +125,523 @@ export function renderDuration(r: any) {
   );
 }
 
-let timeOut: any = null;
-const TIMEOUT_DURATION = 5000;
-
-interface Props {
-  location: any;
-  resources: any;
-  fetchList: any;
-  domContentLoadedTime: any;
-  loadTime: any;
-  playing: boolean;
-  domBuildingTime: any;
-  time: any;
+function renderStatus({
+  status,
+  cached,
+  error,
+}: {
+  status: string;
+  cached: boolean;
+  error?: string;
+}) {
+  const displayedStatus = error ? (
+    <Tooltip title={error}>
+      <div
+        style={{ width: 90 }}
+        className={'overflow-hidden overflow-ellipsis'}
+      >
+        {error}
+      </div>
+    </Tooltip>
+  ) : (
+    status
+  );
+  return (
+    <>
+      {cached ? (
+        <Tooltip title={'Served from cache'} placement="top">
+          <div className="flex items-center">
+            <span className="mr-1">{displayedStatus}</span>
+            <Icon name="wifi" size={16} />
+          </div>
+        </Tooltip>
+      ) : (
+        displayedStatus
+      )}
+    </>
+  );
 }
-function NetworkPanel(props: Props) {
-  const { resources, time, domContentLoadedTime, loadTime, domBuildingTime, fetchList } = props;
-  const { showModal, component: modalActive } = useModal();
-  const [filteredList, setFilteredList] = useState([]);
-  const [showOnlyErrors, setShowOnlyErrors] = useState(false);
-  const additionalHeight = 0;
-  const fetchPresented = fetchList.length > 0;
+
+function NetworkPanelCont({ panelHeight }: { panelHeight: number }) {
+  const { player, store } = React.useContext(PlayerContext);
+  const { sessionStore, uiPlayerStore } = useStore();
+
+  const startedAt = sessionStore.current.startedAt;
   const {
-    sessionStore: { devTools },
-  } = useStore();
-  const filter = useObserver(() => devTools[INDEX_KEY].filter);
-  const activeTab = useObserver(() => devTools[INDEX_KEY].activeTab);
-  const activeIndex = useObserver(() => devTools[INDEX_KEY].index);
-  const [pauseSync, setPauseSync] = useState(activeIndex > 0);
-  const synRef: any = useRef({});
-
-  const onTabClick = (activeTab: any) => devTools.update(INDEX_KEY, { activeTab });
-  const onFilterChange = ({ target: { value } }: any) => {
-    devTools.update(INDEX_KEY, { filter: value });
-  };
-
-  synRef.current = {
-    pauseSync,
-    activeIndex,
-  };
-
-  const removePause = () => {
-    if (!!modalActive) return;
-    clearTimeout(timeOut);
-    timeOut = setTimeout(() => {
-      devTools.update(INDEX_KEY, { index: getCurrentIndex() });
-      setPauseSync(false);
-    }, TIMEOUT_DURATION);
-  };
-
-  const onMouseLeave = () => {
-    if (!!modalActive) return;
-    removePause();
-  };
-
-  useEffect(() => {
-    if (pauseSync) {
-      removePause();
+    domContentLoadedTime,
+    loadTime,
+    domBuildingTime,
+    tabStates,
+    currentTab,
+    tabNames,
+  } = store.get();
+  const tabsArr = Object.keys(tabStates);
+  const tabValues = Object.values(tabStates);
+  const dataSource = uiPlayerStore.dataSource;
+  const showSingleTab = dataSource === 'current';
+  const {
+    fetchList = [],
+    resourceList = [],
+    fetchListNow = [],
+    resourceListNow = [],
+    websocketList = [],
+    websocketListNow = [],
+  } = React.useMemo(() => {
+    if (showSingleTab) {
+      return tabStates[currentTab] ?? {};
+    } else {
+      const fetchList = tabValues.flatMap((tab) => tab.fetchList);
+      const resourceList = tabValues.flatMap((tab) => tab.resourceList);
+      const fetchListNow = tabValues
+        .flatMap((tab) => tab.fetchListNow)
+        .filter(Boolean);
+      const resourceListNow = tabValues
+        .flatMap((tab) => tab.resourceListNow)
+        .filter(Boolean);
+      const websocketList = tabValues.flatMap((tab) => tab.websocketList);
+      const websocketListNow = tabValues
+        .flatMap((tab) => tab.websocketListNow)
+        .filter(Boolean);
+      return {
+        fetchList,
+        resourceList,
+        fetchListNow,
+        resourceListNow,
+        websocketList,
+        websocketListNow,
+      };
     }
+  }, [currentTab, tabStates, dataSource, tabValues]);
+  const getTabNum = (tab: string) => tabsArr.findIndex((t) => t === tab) + 1;
+  const getTabName = (tabId: string) => tabNames[tabId]
+  return (
+    <NetworkPanelComp
+      loadTime={loadTime}
+      panelHeight={panelHeight}
+      domBuildingTime={domBuildingTime}
+      domContentLoadedTime={domContentLoadedTime}
+      fetchList={fetchList}
+      resourceList={resourceList}
+      fetchListNow={fetchListNow}
+      resourceListNow={resourceListNow}
+      player={player}
+      startedAt={startedAt}
+      websocketList={websocketList as WSMessage[]}
+      websocketListNow={websocketListNow as WSMessage[]}
+      getTabNum={getTabNum}
+      getTabName={getTabName}
+      showSingleTab={showSingleTab}
+    />
+  );
+}
 
-    return () => {
-      clearTimeout(timeOut);
-      if (!synRef.current.pauseSync) {
-        devTools.update(INDEX_KEY, { index: 0 });
-      }
-    };
-  }, []);
-
-  const getCurrentIndex = () => {
-    return filteredList.filter((item: any) => item.time <= time).length - 1;
-  };
-
-  useEffect(() => {
-    const currentIndex = getCurrentIndex();
-    if (currentIndex !== activeIndex && !pauseSync) {
-      devTools.update(INDEX_KEY, { index: currentIndex });
-    }
-  }, [time]);
-
-  const { resourcesSize, transferredSize } = useMemo(() => {
-    const resourcesSize = resources.reduce(
-      (sum: any, { decodedBodySize }: any) => sum + (decodedBodySize || 0),
-      0
-    );
-
-    const transferredSize = resources.reduce(
-      (sum: any, { headerSize, encodedBodySize }: any) =>
-        sum + (headerSize || 0) + (encodedBodySize || 0),
-      0
-    );
-    return {
-      resourcesSize,
-      transferredSize,
-    };
-  }, [resources]);
-
-  useEffect(() => {
-    const filterRE = getRE(filter, 'i');
-    let list = resources;
-
-    fetchList.forEach(
-      (fetchCall: any) =>
-        (list = list.filter((networkCall: any) => networkCall.url !== fetchCall.url))
-    );
-    if (fetchPresented) {
-      list = list.filter((i: any) => i.type !== TYPES.XHR)
-    }
-    list = list.concat(fetchList);
-
-    list = list.filter(
-      ({ type, name, status, success }: any) =>
-        (!!filter ? filterRE.test(status) || filterRE.test(name) || filterRE.test(type) : true) &&
-        (activeTab === ALL || type === TAB_TO_TYPE_MAP[activeTab]) &&
-        (showOnlyErrors ? parseInt(status) >= 400 || !success : true)
-    );
-    setFilteredList(list);
-  }, [resources, filter, showOnlyErrors, activeTab, fetchPresented]);
-
-  const referenceLines = useMemo(() => {
-    const arr = [];
-
-    if (domContentLoadedTime != null) {
-      arr.push({
-        time: domContentLoadedTime.time,
-        color: DOM_LOADED_TIME_COLOR,
-      });
-    }
-    if (loadTime != null) {
-      arr.push({
-        time: loadTime.time,
-        color: LOAD_TIME_COLOR,
-      });
-    }
-
-    return arr;
-  }, []);
-
-  const showDetailsModal = (row: any) => {
-    clearTimeout(timeOut);
-    setPauseSync(true);
-    showModal(
-      <FetchDetailsModal resource={row} rows={filteredList} fetchPresented={fetchPresented} />,
-      {
-        right: true,
-        onClose: removePause,
-      }
-    );
-    devTools.update(INDEX_KEY, { index: filteredList.indexOf(row) });
-  };
-
-  useEffect(() => {
-    devTools.update(INDEX_KEY, { filter, activeTab });
-  }, [filter, activeTab]);
+function MobileNetworkPanelCont({ panelHeight }: { panelHeight: number }) {
+  const { player, store } = React.useContext(MobilePlayerContext);
+  const { uiPlayerStore, sessionStore } = useStore();
+  const startedAt = sessionStore.current.startedAt;
+  const zoomEnabled = uiPlayerStore.timelineZoom.enabled;
+  const zoomStartTs = uiPlayerStore.timelineZoom.startTs;
+  const zoomEndTs = uiPlayerStore.timelineZoom.endTs;
+  const domContentLoadedTime = undefined;
+  const loadTime = undefined;
+  const domBuildingTime = undefined;
+  const {
+    fetchList = [],
+    resourceList = [],
+    fetchListNow = [],
+    resourceListNow = [],
+    websocketList = [],
+    websocketListNow = [],
+  } = store.get();
 
   return (
-    <React.Fragment>
+    <NetworkPanelComp
+      isMobile
+      panelHeight={panelHeight}
+      loadTime={loadTime}
+      domBuildingTime={domBuildingTime}
+      domContentLoadedTime={domContentLoadedTime}
+      fetchList={fetchList}
+      resourceList={resourceList}
+      fetchListNow={fetchListNow}
+      resourceListNow={resourceListNow}
+      player={player}
+      startedAt={startedAt}
+      // @ts-ignore
+      websocketList={websocketList}
+      // @ts-ignore
+      websocketListNow={websocketListNow}
+      zoomEnabled={zoomEnabled}
+      zoomStartTs={zoomStartTs}
+      zoomEndTs={zoomEndTs}
+    />
+  );
+}
+
+type WSMessage = Timed & {
+  channelName: string;
+  data: string;
+  timestamp: number;
+  dir: 'up' | 'down';
+  messageType: string;
+};
+
+interface Props {
+  domContentLoadedTime?: {
+    time: number;
+    value: number;
+  };
+  loadTime?: {
+    time: number;
+    value: number;
+  };
+  domBuildingTime?: number;
+  fetchList: Timed[];
+  resourceList: Timed[];
+  fetchListNow: Timed[];
+  resourceListNow: Timed[];
+  websocketList: Array<WSMessage>;
+  websocketListNow: Array<WSMessage>;
+  player: WebPlayer | MobilePlayer;
+  startedAt: number;
+  isMobile?: boolean;
+  zoomEnabled?: boolean;
+  zoomStartTs?: number;
+  zoomEndTs?: number;
+  panelHeight: number;
+  onClose?: () => void;
+  activeOutsideIndex?: number;
+  isSpot?: boolean;
+  getTabNum?: (tab: string) => number;
+  getTabName?: (tabId: string) => string;
+  showSingleTab?: boolean;
+}
+
+export const NetworkPanelComp = observer(
+  ({
+    loadTime,
+    domBuildingTime,
+    domContentLoadedTime,
+    fetchList,
+    resourceList,
+    fetchListNow,
+    resourceListNow,
+    player,
+    startedAt,
+    isMobile,
+    panelHeight,
+    websocketList,
+    zoomEnabled,
+    zoomStartTs,
+    zoomEndTs,
+    onClose,
+    activeOutsideIndex,
+    isSpot,
+    getTabNum,
+    showSingleTab,
+    getTabName,
+  }: Props) => {
+    const [selectedWsChannel, setSelectedWsChannel] = React.useState<
+      WsChannel[] | null
+    >(null);
+    const { showModal } = useModal();
+    const [showOnlyErrors, setShowOnlyErrors] = useState(false);
+
+    const [isDetailsModalActive, setIsDetailsModalActive] = useState(false);
+    const {
+      sessionStore: { devTools },
+    } = useStore();
+    const filter = devTools[INDEX_KEY].filter;
+    const activeTab = devTools[INDEX_KEY].activeTab;
+    const activeIndex = activeOutsideIndex ?? devTools[INDEX_KEY].index;
+
+    const socketList = useMemo(
+      () =>
+        websocketList.filter(
+          (ws, i, arr) =>
+            arr.findIndex((it) => it.channelName === ws.channelName) === i
+        ),
+      [websocketList]
+    );
+
+    const list = useMemo(
+      () =>
+        // TODO: better merge (with body size info) - do it in player
+        resourceList
+          .filter(
+            (res) =>
+              !fetchList.some((ft) => {
+                // res.url !== ft.url doesn't work on relative URLs appearing within fetchList (to-fix in player)
+                if (res.name === ft.name) {
+                  if (res.time === ft.time) return true;
+                  if (res.url.includes(ft.url)) {
+                    return (
+                      Math.abs(res.time - ft.time) < 350 ||
+                      Math.abs(res.timestamp - ft.timestamp) < 350
+                    );
+                  }
+                }
+
+                if (res.name !== ft.name) {
+                  return false;
+                }
+                if (Math.abs(res.time - ft.time) > 250) {
+                  return false;
+                } // TODO: find good epsilons
+                if (Math.abs(res.duration - ft.duration) > 200) {
+                  return false;
+                }
+
+                return true;
+              })
+          )
+          .concat(fetchList)
+          .concat(
+            socketList.map((ws) => ({
+              ...ws,
+              type: 'websocket',
+              method: 'ws',
+              url: ws.channelName,
+              name: ws.channelName,
+              status: '101',
+              duration: 0,
+              transferredBodySize: 0,
+            }))
+          )
+          .filter((req) =>
+            zoomEnabled
+              ? req.time >= zoomStartTs! && req.time <= zoomEndTs!
+              : true
+          )
+          .sort((a, b) => a.time - b.time),
+      [resourceList.length, fetchList.length, socketList]
+    );
+
+    let filteredList = useMemo(() => {
+      if (!showOnlyErrors) {
+        return list;
+      }
+      return list.filter(
+        (it) => parseInt(it.status) >= 400 || !it.success || it.error
+      );
+    }, [showOnlyErrors, list]);
+    filteredList = useRegExListFilterMemo(
+      filteredList,
+      (it) => [it.status, it.name, it.type, it.method],
+      filter
+    );
+    filteredList = useTabListFilterMemo(
+      filteredList,
+      (it) => TYPE_TO_TAB[it.type],
+      ALL,
+      activeTab
+    );
+
+    const onTabClick = (activeTab: (typeof TAP_KEYS)[number]) =>
+      devTools.update(INDEX_KEY, { activeTab });
+    const onFilterChange = ({
+      target: { value },
+    }: React.ChangeEvent<HTMLInputElement>) =>
+      devTools.update(INDEX_KEY, { filter: value });
+
+    // AutoScroll
+    const [timeoutStartAutoscroll, stopAutoscroll] = useAutoscroll(
+      filteredList,
+      getLastItemTime(fetchListNow, resourceListNow),
+      activeIndex,
+      (index) => devTools.update(INDEX_KEY, { index })
+    );
+    const onMouseEnter = stopAutoscroll;
+    const onMouseLeave = () => {
+      if (isDetailsModalActive) {
+        return;
+      }
+      timeoutStartAutoscroll();
+    };
+
+    const resourcesSize = useMemo(
+      () =>
+        resourceList.reduce(
+          (sum, { decodedBodySize }) => sum + (decodedBodySize || 0),
+          0
+        ),
+      [resourceList.length]
+    );
+    const transferredSize = useMemo(
+      () =>
+        resourceList.reduce(
+          (sum, { headerSize, encodedBodySize }) =>
+            sum + (headerSize || 0) + (encodedBodySize || 0),
+          0
+        ),
+      [resourceList.length]
+    );
+
+    const referenceLines = useMemo(() => {
+      const arr = [];
+
+      if (domContentLoadedTime != null) {
+        arr.push({
+          time: domContentLoadedTime.time,
+          color: DOM_LOADED_TIME_COLOR,
+        });
+      }
+      if (loadTime != null) {
+        arr.push({
+          time: loadTime.time,
+          color: LOAD_TIME_COLOR,
+        });
+      }
+
+      return arr;
+    }, [domContentLoadedTime, loadTime]);
+
+    const showDetailsModal = (item: any) => {
+      if (item.type === 'websocket') {
+        const socketMsgList = websocketList.filter(
+          (ws) => ws.channelName === item.channelName
+        );
+
+        return setSelectedWsChannel(socketMsgList);
+      }
+      setIsDetailsModalActive(true);
+      showModal(
+        <FetchDetailsModal
+          isSpot={isSpot}
+          time={item.time + startedAt}
+          resource={item}
+          rows={filteredList}
+          fetchPresented={fetchList.length > 0}
+        />,
+        {
+          right: true,
+          width: 500,
+          onClose: () => {
+            setIsDetailsModalActive(false);
+            timeoutStartAutoscroll();
+          },
+        }
+      );
+      devTools.update(INDEX_KEY, { index: filteredList.indexOf(item) });
+      stopAutoscroll();
+    };
+
+    const tableCols = React.useMemo(() => {
+      const cols: any[] = [
+        {
+          label: 'Status',
+          dataKey: 'status',
+          width: 90,
+          render: renderStatus,
+        },
+        {
+          label: 'Type',
+          dataKey: 'type',
+          width: 90,
+          render: renderType,
+        },
+        {
+          label: 'Method',
+          width: 80,
+          dataKey: 'method',
+        },
+        {
+          label: 'Name',
+          width: 240,
+          dataKey: 'name',
+          render: renderName,
+        },
+        {
+          label: 'Size',
+          width: 80,
+          dataKey: 'decodedBodySize',
+          render: renderSize,
+          hidden: activeTab === XHR,
+        },
+        {
+          label: 'Duration',
+          width: 80,
+          dataKey: 'duration',
+          render: renderDuration,
+        },
+      ];
+      if (!showSingleTab && !isSpot) {
+        cols.unshift({
+          label: 'Source',
+          width: 64,
+          render: (r: Record<string, any>) => (
+            <Tooltip title={`${getTabName?.(r.tabId) ?? `Tab ${getTabNum?.(r.tabId) ?? 0}`}`} placement="left">
+              <div className="bg-gray-light rounded-full min-w-5 min-h-5 w-5 h-5 flex items-center justify-center text-xs cursor-default">
+                {getTabNum?.(r.tabId) ?? 0}
+              </div>
+            </Tooltip>
+          ),
+        });
+      }
+      return cols;
+    }, [showSingleTab]);
+
+    return (
       <BottomBlock
-        style={{ height: 300 + additionalHeight + 'px' }}
+        style={{ height: '100%' }}
         className="border"
-        onMouseEnter={() => setPauseSync(true)}
+        onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
-        <BottomBlock.Header>
+        <BottomBlock.Header onClose={onClose}>
           <div className="flex items-center">
-            <span className="font-semibold color-gray-medium mr-4">Network</span>
-            <Tabs
-              className="uppercase"
-              tabs={TABS}
-              active={activeTab}
-              onClick={onTabClick}
-              border={false}
+            <span className="font-semibold color-gray-medium mr-4">
+              Network
+            </span>
+            {isMobile ? null : (
+              <Tabs
+                className="uppercase"
+                tabs={NETWORK_TABS}
+                active={activeTab}
+                onClick={onTabClick}
+                border={false}
+              />
+            )}
+          </div>
+          <div className={'flex items-center gap-2'}>
+            {!isMobile && !isSpot ? <TabSelector /> : null}
+            <Input
+              className="rounded-lg"
+              placeholder="Filter by name, type, method or value"
+              name="filter"
+              onChange={onFilterChange}
+              width={280}
+              value={filter}
+              size="small"
+              prefix={<SearchOutlined className="text-neutral-400" />}
             />
           </div>
-          <Input
-            className="input-small"
-            placeholder="Filter by name, type or value"
-            icon="search"
-            iconPosition="left"
-            name="filter"
-            onChange={onFilterChange}
-            height={28}
-            width={230}
-            value={filter}
-          />
         </BottomBlock.Header>
         <BottomBlock.Content>
-          <div className="flex items-center justify-between px-4">
+          <div className="flex items-center justify-between px-4 border-b bg-teal/5 h-8">
             <div>
-              <Toggler
-                checked={showOnlyErrors}
-                name="test"
-                onChange={() => setShowOnlyErrors(!showOnlyErrors)}
-                label="4xx-5xx Only"
-              />
+              <Form.Item name="show-errors-only" className="mb-0">
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Switch
+                    checked={showOnlyErrors}
+                    onChange={() => setShowOnlyErrors(!showOnlyErrors)}
+                    size="small"
+                  />
+                  <span className="text-sm ms-2">4xx-5xx Only</span>
+                </label>
+              </Form.Item>
             </div>
             <InfoLine>
-              <InfoLine.Point label={filteredList.length + ''} value=" requests" />
+              <InfoLine.Point
+                label={filteredList.length + ''}
+                value=" requests"
+              />
               <InfoLine.Point
                 label={formatBytes(transferredSize)}
                 value="transferred"
@@ -336,7 +658,9 @@ function NetworkPanel(props: Props) {
                 display={domBuildingTime != null}
               />
               <InfoLine.Point
-                label={domContentLoadedTime && formatMs(domContentLoadedTime.value)}
+                label={
+                  domContentLoadedTime && formatMs(domContentLoadedTime.value)
+                }
                 value="DOMContentLoaded"
                 display={domContentLoadedTime != null}
                 dotColor={DOM_LOADED_TIME_COLOR}
@@ -351,82 +675,48 @@ function NetworkPanel(props: Props) {
           </div>
           <NoContent
             title={
-              <div className="capitalize flex items-center mt-16">
-                <Icon name="info-circle" className="mr-2" size="18" />
+              <div className="capitalize flex items-center gap-2">
+                <InfoCircleOutlined size={18} />
                 No Data
               </div>
             }
             size="small"
             show={filteredList.length === 0}
           >
+            {/*@ts-ignore*/}
             <TimeTable
               rows={filteredList}
+              tableHeight={panelHeight - 102}
               referenceLines={referenceLines}
               renderPopup
               onRowClick={showDetailsModal}
-              additionalHeight={additionalHeight}
+              sortBy={'time'}
+              sortAscending
               onJump={(row: any) => {
-                setPauseSync(true);
-                devTools.update(INDEX_KEY, { index: filteredList.indexOf(row) });
-                jump(row.time);
+                devTools.update(INDEX_KEY, {
+                  index: filteredList.indexOf(row),
+                });
+                player.jump(row.time);
               }}
               activeIndex={activeIndex}
             >
-              {[
-                // {
-                //   label: 'Start',
-                //   width: 120,
-                //   render: renderStart,
-                // },
-                {
-                  label: 'Status',
-                  dataKey: 'status',
-                  width: 70,
-                },
-                {
-                  label: 'Type',
-                  dataKey: 'type',
-                  width: 90,
-                  render: renderType,
-                },
-                {
-                  label: 'Name',
-                  width: 240,
-                  dataKey: 'name',
-                  render: renderName,
-                },
-                {
-                  label: 'Size',
-                  width: 80,
-                  dataKey: 'decodedBodySize',
-                  render: renderSize,
-                  hidden: activeTab === XHR,
-                },
-                {
-                  label: 'Time',
-                  width: 80,
-                  dataKey: 'duration',
-                  render: renderDuration,
-                },
-              ]}
+              {tableCols}
             </TimeTable>
+            {selectedWsChannel ? (
+              <WSPanel
+                socketMsgList={selectedWsChannel}
+                onClose={() => setSelectedWsChannel(null)}
+              />
+            ) : null}
           </NoContent>
         </BottomBlock.Content>
       </BottomBlock>
-    </React.Fragment>
-  );
-}
-
-export default connectPlayer((state: any) => ({
-    location: state.location,
-    resources: state.resourceList,
-    domContentLoadedTime: state.domContentLoadedTime,
-    fetchList: state.fetchList.map((i: any) =>
-      Resource({ ...i.toJS(), type: TYPES.XHR, time: i.time < 0 ? 0 : i.time })
-    ),
-    loadTime: state.loadTime,
-    time: state.time,
-    playing: state.playing,
-    domBuildingTime: state.domBuildingTime,
+    );
   }
-))(NetworkPanel);
+);
+
+const WebNetworkPanel = observer(NetworkPanelCont);
+
+const MobileNetworkPanel = observer(MobileNetworkPanelCont);
+
+export { WebNetworkPanel, MobileNetworkPanel };

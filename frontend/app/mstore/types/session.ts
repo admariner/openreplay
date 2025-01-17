@@ -1,10 +1,10 @@
 import { runInAction, makeAutoObservable, observable } from 'mobx'
-import { List, Map } from 'immutable';
-import { DateTime, Duration } from 'luxon';
+import { Map } from 'immutable';
+import { Duration } from 'luxon';
 
 const HASH_MOD = 1610612741;
 const HASH_P = 53;
-function hashString(s: string): number {
+export function hashString(s: string): number {
   let mul = 1;
   let hash = 0;
   for (let i = 0; i < s.length; i++) {
@@ -15,9 +15,11 @@ function hashString(s: string): number {
 }
 
 export default class Session {
+    intertag = "_mobx"
     sessionId: string = "";
     viewed: boolean = false
     duration: number = 0
+    durationMs: number = 0
     metadata: any = Map()
     startedAt: number = 0
     userBrowser: string = ""
@@ -25,9 +27,14 @@ export default class Session {
     userId: string = ""
     userDeviceType: string = ""
     userCountry: string = ""
+    userCity: string = ""
+    userState: string = ""
     eventsCount: number = 0
     userNumericHash: number = 0
     userDisplayName: string = ""
+    canvasURL: string[] = []
+    domURL: string[] = []
+    devtoolsURL: string[] = []
 
     constructor() {
         makeAutoObservable(this, {
@@ -47,7 +54,8 @@ export default class Session {
             this.sessionId = session.sessionId
             this.viewed = session.viewed
             this.duration = Duration.fromMillis(session.duration < 1000 ? 1000 : session.duration);
-            this.metadata = Map(session.metadata)
+            this.durationMs = session.duration
+            this.metadata = session.metadata
             this.startedAt = startedAt
             this.userBrowser = session.userBrowser
             this.userOs = session.userOs
@@ -55,6 +63,8 @@ export default class Session {
             this.userDeviceType = session.userDeviceType
             this.eventsCount = session.eventsCount
             this.userCountry = session.userCountry
+            this.userCity = session.userCity
+            this.userState = session.userState
             this.userNumericHash = hashString(session.userId || session.userAnonymousId || session.userUuid || session.userID || session.userUUID || "")
             this.userDisplayName = session.userId || session.userAnonymousId || session.userID || 'Anonymous User'
         })  

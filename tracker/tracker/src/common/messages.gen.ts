@@ -2,10 +2,8 @@
 /* eslint-disable */
 
 export declare const enum Type {
-  BatchMetadata = 81,
-  PartitionedMessage = 82,
   Timestamp = 0,
-  SetPageLocation = 4,
+  SetPageLocationDeprecated = 4,
   SetViewportSize = 5,
   SetViewportScroll = 6,
   CreateDocument = 7,
@@ -21,11 +19,11 @@ export declare const enum Type {
   SetInputValue = 18,
   SetInputChecked = 19,
   MouseMove = 20,
+  NetworkRequestDeprecated = 21,
   ConsoleLog = 22,
   PageLoadTiming = 23,
   PageRenderTiming = 24,
-  JSExceptionDeprecated = 25,
-  RawCustomEvent = 27,
+  CustomEvent = 27,
   UserID = 28,
   UserAnonymousID = 29,
   Metadata = 30,
@@ -35,13 +33,17 @@ export declare const enum Type {
   Profiler = 40,
   OTable = 41,
   StateAction = 42,
-  Redux = 44,
+  ReduxDeprecated = 44,
   Vuex = 45,
   MobX = 46,
   NgRx = 47,
-  GraphQL = 48,
+  GraphQLDeprecated = 48,
   PerformanceTrack = 49,
-  ResourceTiming = 53,
+  StringDictDeprecated = 50,
+  SetNodeAttributeDictDeprecated = 51,
+  StringDict = 43,
+  SetNodeAttributeDict = 52,
+  ResourceTimingDeprecated = 53,
   ConnectionInformation = 54,
   SetPageVisibility = 55,
   LoadFontFace = 57,
@@ -52,40 +54,43 @@ export declare const enum Type {
   TechnicalInfo = 63,
   CustomIssue = 64,
   CSSInsertRuleURLBased = 67,
-  MouseClick = 69,
+  MouseClick = 68,
+  MouseClickDeprecated = 69,
   CreateIFrameDocument = 70,
   AdoptedSSReplaceURLBased = 71,
   AdoptedSSInsertRuleURLBased = 73,
   AdoptedSSDeleteRule = 75,
   AdoptedSSAddOwner = 76,
   AdoptedSSRemoveOwner = 77,
-  Zustand = 79,
   JSException = 78,
+  Zustand = 79,
+  BatchMetadata = 81,
+  PartitionedMessage = 82,
+  NetworkRequest = 83,
+  WSChannel = 84,
+  InputChange = 112,
+  SelectionChange = 113,
+  MouseThrashing = 114,
+  UnbindNodes = 115,
+  ResourceTiming = 116,
+  TabChange = 117,
+  TabData = 118,
+  CanvasNode = 119,
+  TagTrigger = 120,
+  Redux = 121,
+  SetPageLocation = 122,
+  GraphQL = 123,
+  WebVitals = 124,
 }
 
-
-export type BatchMetadata = [
-  /*type:*/ Type.BatchMetadata,
-  /*version:*/ number,
-  /*pageNo:*/ number,
-  /*firstIndex:*/ number,
-  /*timestamp:*/ number,
-  /*location:*/ string,
-]
-
-export type PartitionedMessage = [
-  /*type:*/ Type.PartitionedMessage,
-  /*partNo:*/ number,
-  /*partTotal:*/ number,
-]
 
 export type Timestamp = [
   /*type:*/ Type.Timestamp,
   /*timestamp:*/ number,
 ]
 
-export type SetPageLocation = [
-  /*type:*/ Type.SetPageLocation,
+export type SetPageLocationDeprecated = [
+  /*type:*/ Type.SetPageLocationDeprecated,
   /*url:*/ string,
   /*referrer:*/ string,
   /*navigationStart:*/ number,
@@ -187,6 +192,18 @@ export type MouseMove = [
   /*y:*/ number,
 ]
 
+export type NetworkRequestDeprecated = [
+  /*type:*/ Type.NetworkRequestDeprecated,
+  /*type:*/ string,
+  /*method:*/ string,
+  /*url:*/ string,
+  /*request:*/ string,
+  /*response:*/ string,
+  /*status:*/ number,
+  /*timestamp:*/ number,
+  /*duration:*/ number,
+]
+
 export type ConsoleLog = [
   /*type:*/ Type.ConsoleLog,
   /*level:*/ string,
@@ -213,15 +230,8 @@ export type PageRenderTiming = [
   /*timeToInteractive:*/ number,
 ]
 
-export type JSExceptionDeprecated = [
-  /*type:*/ Type.JSExceptionDeprecated,
-  /*name:*/ string,
-  /*message:*/ string,
-  /*payload:*/ string,
-]
-
-export type RawCustomEvent = [
-  /*type:*/ Type.RawCustomEvent,
+export type CustomEvent = [
+  /*type:*/ Type.CustomEvent,
   /*name:*/ string,
   /*payload:*/ string,
 ]
@@ -285,8 +295,8 @@ export type StateAction = [
   /*type:*/ string,
 ]
 
-export type Redux = [
-  /*type:*/ Type.Redux,
+export type ReduxDeprecated = [
+  /*type:*/ Type.ReduxDeprecated,
   /*action:*/ string,
   /*state:*/ string,
   /*duration:*/ number,
@@ -311,12 +321,13 @@ export type NgRx = [
   /*duration:*/ number,
 ]
 
-export type GraphQL = [
-  /*type:*/ Type.GraphQL,
+export type GraphQLDeprecated = [
+  /*type:*/ Type.GraphQLDeprecated,
   /*operationKind:*/ string,
   /*operationName:*/ string,
   /*variables:*/ string,
   /*response:*/ string,
+  /*duration:*/ number,
 ]
 
 export type PerformanceTrack = [
@@ -327,8 +338,34 @@ export type PerformanceTrack = [
   /*usedJSHeapSize:*/ number,
 ]
 
-export type ResourceTiming = [
-  /*type:*/ Type.ResourceTiming,
+export type StringDictDeprecated = [
+  /*type:*/ Type.StringDictDeprecated,
+  /*key:*/ number,
+  /*value:*/ string,
+]
+
+export type SetNodeAttributeDictDeprecated = [
+  /*type:*/ Type.SetNodeAttributeDictDeprecated,
+  /*id:*/ number,
+  /*nameKey:*/ number,
+  /*valueKey:*/ number,
+]
+
+export type StringDict = [
+  /*type:*/ Type.StringDict,
+  /*key:*/ string,
+  /*value:*/ string,
+]
+
+export type SetNodeAttributeDict = [
+  /*type:*/ Type.SetNodeAttributeDict,
+  /*id:*/ number,
+  /*name:*/ string,
+  /*value:*/ string,
+]
+
+export type ResourceTimingDeprecated = [
+  /*type:*/ Type.ResourceTimingDeprecated,
   /*timestamp:*/ number,
   /*duration:*/ number,
   /*ttfb:*/ number,
@@ -415,6 +452,16 @@ export type MouseClick = [
   /*hesitationTime:*/ number,
   /*label:*/ string,
   /*selector:*/ string,
+  /*normalizedX:*/ number,
+  /*normalizedY:*/ number,
+]
+
+export type MouseClickDeprecated = [
+  /*type:*/ Type.MouseClickDeprecated,
+  /*id:*/ number,
+  /*hesitationTime:*/ number,
+  /*label:*/ string,
+  /*selector:*/ string,
 ]
 
 export type CreateIFrameDocument = [
@@ -456,12 +503,6 @@ export type AdoptedSSRemoveOwner = [
   /*id:*/ number,
 ]
 
-export type Zustand = [
-  /*type:*/ Type.Zustand,
-  /*mutation:*/ string,
-  /*state:*/ string,
-]
-
 export type JSException = [
   /*type:*/ Type.JSException,
   /*name:*/ string,
@@ -470,6 +511,143 @@ export type JSException = [
   /*metadata:*/ string,
 ]
 
+export type Zustand = [
+  /*type:*/ Type.Zustand,
+  /*mutation:*/ string,
+  /*state:*/ string,
+]
 
-type Message =  BatchMetadata | PartitionedMessage | Timestamp | SetPageLocation | SetViewportSize | SetViewportScroll | CreateDocument | CreateElementNode | CreateTextNode | MoveNode | RemoveNode | SetNodeAttribute | RemoveNodeAttribute | SetNodeData | SetNodeScroll | SetInputTarget | SetInputValue | SetInputChecked | MouseMove | ConsoleLog | PageLoadTiming | PageRenderTiming | JSExceptionDeprecated | RawCustomEvent | UserID | UserAnonymousID | Metadata | CSSInsertRule | CSSDeleteRule | Fetch | Profiler | OTable | StateAction | Redux | Vuex | MobX | NgRx | GraphQL | PerformanceTrack | ResourceTiming | ConnectionInformation | SetPageVisibility | LoadFontFace | SetNodeFocus | LongTask | SetNodeAttributeURLBased | SetCSSDataURLBased | TechnicalInfo | CustomIssue | CSSInsertRuleURLBased | MouseClick | CreateIFrameDocument | AdoptedSSReplaceURLBased | AdoptedSSInsertRuleURLBased | AdoptedSSDeleteRule | AdoptedSSAddOwner | AdoptedSSRemoveOwner | Zustand | JSException
+export type BatchMetadata = [
+  /*type:*/ Type.BatchMetadata,
+  /*version:*/ number,
+  /*pageNo:*/ number,
+  /*firstIndex:*/ number,
+  /*timestamp:*/ number,
+  /*location:*/ string,
+]
+
+export type PartitionedMessage = [
+  /*type:*/ Type.PartitionedMessage,
+  /*partNo:*/ number,
+  /*partTotal:*/ number,
+]
+
+export type NetworkRequest = [
+  /*type:*/ Type.NetworkRequest,
+  /*type:*/ string,
+  /*method:*/ string,
+  /*url:*/ string,
+  /*request:*/ string,
+  /*response:*/ string,
+  /*status:*/ number,
+  /*timestamp:*/ number,
+  /*duration:*/ number,
+  /*transferredBodySize:*/ number,
+]
+
+export type WSChannel = [
+  /*type:*/ Type.WSChannel,
+  /*chType:*/ string,
+  /*channelName:*/ string,
+  /*data:*/ string,
+  /*timestamp:*/ number,
+  /*dir:*/ string,
+  /*messageType:*/ string,
+]
+
+export type InputChange = [
+  /*type:*/ Type.InputChange,
+  /*id:*/ number,
+  /*value:*/ string,
+  /*valueMasked:*/ boolean,
+  /*label:*/ string,
+  /*hesitationTime:*/ number,
+  /*inputDuration:*/ number,
+]
+
+export type SelectionChange = [
+  /*type:*/ Type.SelectionChange,
+  /*selectionStart:*/ number,
+  /*selectionEnd:*/ number,
+  /*selection:*/ string,
+]
+
+export type MouseThrashing = [
+  /*type:*/ Type.MouseThrashing,
+  /*timestamp:*/ number,
+]
+
+export type UnbindNodes = [
+  /*type:*/ Type.UnbindNodes,
+  /*totalRemovedPercent:*/ number,
+]
+
+export type ResourceTiming = [
+  /*type:*/ Type.ResourceTiming,
+  /*timestamp:*/ number,
+  /*duration:*/ number,
+  /*ttfb:*/ number,
+  /*headerSize:*/ number,
+  /*encodedBodySize:*/ number,
+  /*decodedBodySize:*/ number,
+  /*url:*/ string,
+  /*initiator:*/ string,
+  /*transferredSize:*/ number,
+  /*cached:*/ boolean,
+]
+
+export type TabChange = [
+  /*type:*/ Type.TabChange,
+  /*tabId:*/ string,
+]
+
+export type TabData = [
+  /*type:*/ Type.TabData,
+  /*tabId:*/ string,
+]
+
+export type CanvasNode = [
+  /*type:*/ Type.CanvasNode,
+  /*nodeId:*/ string,
+  /*timestamp:*/ number,
+]
+
+export type TagTrigger = [
+  /*type:*/ Type.TagTrigger,
+  /*tagId:*/ number,
+]
+
+export type Redux = [
+  /*type:*/ Type.Redux,
+  /*action:*/ string,
+  /*state:*/ string,
+  /*duration:*/ number,
+  /*actionTime:*/ number,
+]
+
+export type SetPageLocation = [
+  /*type:*/ Type.SetPageLocation,
+  /*url:*/ string,
+  /*referrer:*/ string,
+  /*navigationStart:*/ number,
+  /*documentTitle:*/ string,
+]
+
+export type GraphQL = [
+  /*type:*/ Type.GraphQL,
+  /*operationKind:*/ string,
+  /*operationName:*/ string,
+  /*variables:*/ string,
+  /*response:*/ string,
+  /*duration:*/ number,
+]
+
+export type WebVitals = [
+  /*type:*/ Type.WebVitals,
+  /*name:*/ string,
+  /*value:*/ string,
+]
+
+
+type Message =  Timestamp | SetPageLocationDeprecated | SetViewportSize | SetViewportScroll | CreateDocument | CreateElementNode | CreateTextNode | MoveNode | RemoveNode | SetNodeAttribute | RemoveNodeAttribute | SetNodeData | SetNodeScroll | SetInputTarget | SetInputValue | SetInputChecked | MouseMove | NetworkRequestDeprecated | ConsoleLog | PageLoadTiming | PageRenderTiming | CustomEvent | UserID | UserAnonymousID | Metadata | CSSInsertRule | CSSDeleteRule | Fetch | Profiler | OTable | StateAction | ReduxDeprecated | Vuex | MobX | NgRx | GraphQLDeprecated | PerformanceTrack | StringDictDeprecated | SetNodeAttributeDictDeprecated | StringDict | SetNodeAttributeDict | ResourceTimingDeprecated | ConnectionInformation | SetPageVisibility | LoadFontFace | SetNodeFocus | LongTask | SetNodeAttributeURLBased | SetCSSDataURLBased | TechnicalInfo | CustomIssue | CSSInsertRuleURLBased | MouseClick | MouseClickDeprecated | CreateIFrameDocument | AdoptedSSReplaceURLBased | AdoptedSSInsertRuleURLBased | AdoptedSSDeleteRule | AdoptedSSAddOwner | AdoptedSSRemoveOwner | JSException | Zustand | BatchMetadata | PartitionedMessage | NetworkRequest | WSChannel | InputChange | SelectionChange | MouseThrashing | UnbindNodes | ResourceTiming | TabChange | TabData | CanvasNode | TagTrigger | Redux | SetPageLocation | GraphQL | WebVitals
 export default Message

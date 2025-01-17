@@ -3,7 +3,6 @@ package redisstream
 import (
 	"log"
 	"net"
-	"openreplay/backend/pkg/messages"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +10,9 @@ import (
 
 	_redis "github.com/go-redis/redis"
 	"github.com/pkg/errors"
+
+	"openreplay/backend/pkg/messages"
+	"openreplay/backend/pkg/queue/types"
 )
 
 type idsInfo struct {
@@ -27,11 +29,14 @@ type Consumer struct {
 	idsPending      streamPendingIDsMap
 	lastTs          int64
 	autoCommit      bool
-	event           chan interface{}
+	event           chan *types.PartitionsRebalancedEvent
 }
 
 func NewConsumer(group string, streams []string, messageIterator messages.MessageIterator) *Consumer {
-	redis := getRedisClient()
+	redis, err := getRedisClient()
+	if err != nil {
+		log.Fatalln(err)
+	}
 	for _, stream := range streams {
 		err := redis.XGroupCreateMkStream(stream, group, "0").Err()
 		if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
@@ -58,13 +63,13 @@ func NewConsumer(group string, streams []string, messageIterator messages.Messag
 		group:           group,
 		autoCommit:      true,
 		idsPending:      idsPending,
-		event:           make(chan interface{}, 4),
+		event:           make(chan *types.PartitionsRebalancedEvent, 4),
 	}
 }
 
 const READ_COUNT = 10
 
-func (c *Consumer) Rebalanced() <-chan interface{} {
+func (c *Consumer) Rebalanced() <-chan *types.PartitionsRebalancedEvent {
 	return c.event
 }
 

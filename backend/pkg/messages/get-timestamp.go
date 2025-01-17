@@ -4,58 +4,58 @@ package messages
 func GetTimestamp(message Message) uint64 {
 	switch msg := message.(type) {
 
-	case *IOSBatchMeta:
+	case *MobileSessionStart:
 		return msg.Timestamp
 
-	case *IOSSessionStart:
+	case *MobileSessionEnd:
 		return msg.Timestamp
 
-	case *IOSSessionEnd:
+	case *MobileMetadata:
 		return msg.Timestamp
 
-	case *IOSMetadata:
+	case *MobileEvent:
 		return msg.Timestamp
 
-	case *IOSCustomEvent:
+	case *MobileUserID:
 		return msg.Timestamp
 
-	case *IOSUserID:
+	case *MobileUserAnonymousID:
 		return msg.Timestamp
 
-	case *IOSUserAnonymousID:
+	case *MobileScreenChanges:
 		return msg.Timestamp
 
-	case *IOSScreenChanges:
+	case *MobileCrash:
 		return msg.Timestamp
 
-	case *IOSCrash:
+	case *MobileViewComponentEvent:
 		return msg.Timestamp
 
-	case *IOSScreenEnter:
+	case *MobileClickEvent:
 		return msg.Timestamp
 
-	case *IOSScreenLeave:
+	case *MobileInputEvent:
 		return msg.Timestamp
 
-	case *IOSClickEvent:
+	case *MobilePerformanceEvent:
 		return msg.Timestamp
 
-	case *IOSInputEvent:
+	case *MobileLog:
 		return msg.Timestamp
 
-	case *IOSPerformanceEvent:
+	case *MobileInternalError:
 		return msg.Timestamp
 
-	case *IOSLog:
+	case *MobileNetworkCall:
 		return msg.Timestamp
 
-	case *IOSInternalError:
+	case *MobileSwipeEvent:
 		return msg.Timestamp
 
-	case *IOSNetworkCall:
+	case *MobileBatchMeta:
 		return msg.Timestamp
 
-	case *IOSIssueEvent:
+	case *MobileIssueEvent:
 		return msg.Timestamp
 
 	}

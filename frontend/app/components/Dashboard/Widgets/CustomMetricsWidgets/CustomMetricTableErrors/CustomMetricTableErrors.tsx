@@ -30,6 +30,7 @@ function CustomMetricTableErrors(props: RouteComponentProps & Props) {
 
         showModal(<ErrorDetailsModal errorId={errorId} />, {
             right: true,
+            width: 1200,
             onClose: () => {
                 if (props.history.location.pathname.includes("/dashboard") || props.history.location.pathname.includes("/metrics/")) {
                     props.history.replace({ search: "" });
@@ -44,7 +45,7 @@ function CustomMetricTableErrors(props: RouteComponentProps & Props) {
 
     return (
         <NoContent
-            title={<div className="flex items-center"><Icon name="info-circle" size={18} className="mr-2" />No data for the selected time period</div>}
+            title={<div className="flex items-center"><Icon name="info-circle" size={14} className="mr-2" />No data available for the selected period.</div>}
             show={!data.errors || data.errors.length === 0}
             size="small"
             style={{ minHeight: 220 }}
@@ -60,25 +61,23 @@ function CustomMetricTableErrors(props: RouteComponentProps & Props) {
                         </div>
                     ))}
 
-                {isEdit && (
-                    <div className="my-6 flex items-center justify-center">
-                        <Pagination
-                            page={metric.page}
-                            totalPages={Math.ceil(
-                                data.total / metric.limit
-                            )}
-                            onPageChange={(page: any) =>
-                                metric.updateKey("page", page)
-                            }
-                            limit={metric.limit}
-                            debounceRequest={500}
-                        />
-                    </div>
-                )}
+                {/*{isEdit && (*/}
+                <div className="my-6 flex items-center justify-center">
+                    <Pagination
+                        page={metric.page}
+                        total={data.total}
+                        onPageChange={(page: any) =>
+                            metric.updateKey("page", page)
+                        }
+                        limit={5}
+                        debounceRequest={500}
+                    />
+                </div>
+                {/*)}*/}
 
-                {!isEdit && (
-                    <ViewMore total={data.total} limit={metric.limit} />
-                )}
+                {/*{!isEdit && (*/}
+                {/*    <ViewMore total={data.total} limit={5} />*/}
+                {/*)}*/}
             </div>
         </NoContent>
     );

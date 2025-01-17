@@ -4,11 +4,12 @@ import "fmt"
 
 type Message interface {
 	Encode() []byte
-	EncodeWithIndex() []byte
 	Decode() Message
 	TypeID() int
 	Meta() *message
 	SessionID() uint64
+	MsgID() uint64
+	Time() uint64
 }
 
 // BatchInfo represents common information for all messages inside data batch
@@ -48,7 +49,7 @@ func (b *BatchInfo) Info() string {
 }
 
 type message struct {
-	Timestamp int64
+	Timestamp uint64
 	Index     uint64
 	Url       string
 	batch     *BatchInfo
@@ -71,6 +72,14 @@ func (m *message) SetMeta(origin *message) {
 
 func (m *message) SessionID() uint64 {
 	return m.batch.sessionID
+}
+
+func (m *message) MsgID() uint64 {
+	return m.Meta().Index
+}
+
+func (m *message) Time() uint64 {
+	return m.Meta().Timestamp
 }
 
 func (m *message) SetSessionID(sessID uint64) {

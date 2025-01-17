@@ -4,10 +4,12 @@
     "strictNullChecks": true,
     "alwaysStrict": true,
     "target": "es2017",
-    "module": "es6",
-    "moduleResolution": "node",
+    "module": "ESNext",
+    "moduleResolution": "Node",
     "allowSyntheticDefaultImports": true,
     "declaration": true,
-    "outDir": "./lib"
-  }
+    "outDir": "./lib",
+    "rootDir": "src"
+  },
+  "exclude": ["**/*.test.ts"]
 }

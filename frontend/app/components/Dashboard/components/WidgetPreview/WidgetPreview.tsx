@@ -1,118 +1,128 @@
-import React from 'react';
+import { Button, Space, Switch } from 'antd';
 import cn from 'classnames';
-import WidgetWrapper from '../WidgetWrapper';
+import { observer } from 'mobx-react-lite';
+import React from 'react';
+
+import { HEATMAP, USER_PATH } from 'App/constants/card';
 import { useStore } from 'App/mstore';
-import { SegmentSelection, Button, Icon } from 'UI';
-import { useObserver } from 'mobx-react-lite';
-import { FilterKey } from 'Types/filter/filterType';
-import WidgetDateRange from '../WidgetDateRange/WidgetDateRange';
-// import Period, { LAST_24_HOURS, LAST_30_DAYS } from 'Types/app/period';
-import DashboardSelectionModal from '../DashboardSelectionModal/DashboardSelectionModal';
+import ClickMapRagePicker from 'Components/Dashboard/components/ClickMapRagePicker';
+
+import WidgetWrapper from '../WidgetWrapper';
+import WidgetOptions from 'Components/Dashboard/components/WidgetOptions';
 
 interface Props {
-    className?: string;
-    name: string;
+  className?: string;
+  name: string;
+  isEditing?: boolean;
 }
+
 function WidgetPreview(props: Props) {
-    const [showDashboardSelectionModal, setShowDashboardSelectionModal] = React.useState(false);
-    const { className = '' } = props;
-    const { metricStore, dashboardStore } = useStore();
-    const dashboards = dashboardStore.dashboards;
-    const metric: any = useObserver(() => metricStore.instance);
-    const isTimeSeries = metric.metricType === 'timeseries';
-    const isTable = metric.metricType === 'table';
-    const drillDownFilter = useObserver(() => dashboardStore.drillDownFilter);
-    const disableVisualization = useObserver(() => metric.metricOf === FilterKey.SESSIONS || metric.metricOf === FilterKey.ERRORS);
-    // const period = useObserver(() => dashboardStore.drillDownPeriod);
+  const { className = '' } = props;
+  const { metricStore, dashboardStore } = useStore();
+  const metric: any = metricStore.instance;
 
-    const chagneViewType = (e, { name, value }: any) => {
-        metric.update({ [ name ]: value });
-    }
+  return (
+    <>
+      <div
+        className={cn(className, 'bg-white rounded-xl border shadow-sm mt-0')}
+      >
+        <div className="flex items-center justify-between px-4 pt-2">
+          <h2 className="text-xl">{props.name}</h2>
+          <div className="flex items-center">
+            <WidgetOptions />
+            {/*{metric.metricType === USER_PATH && (*/}
+            {/*  <a*/}
+            {/*    href="#"*/}
+            {/*    onClick={(e) => {*/}
+            {/*      e.preventDefault();*/}
+            {/*      metric.update({ hideExcess: !metric.hideExcess });*/}
+            {/*    }}*/}
+            {/*  >*/}
+            {/*    <Space>*/}
+            {/*      <Switch checked={metric.hideExcess} size="small" />*/}
+            {/*      <span className="mr-4 color-gray-medium">*/}
+            {/*        Hide Minor Paths*/}
+            {/*      </span>*/}
+            {/*    </Space>*/}
+            {/*  </a>*/}
+            {/*)}*/}
 
-    // const onChangePeriod = (period: any) => {
-    //     dashboardStore.setDrillDownPeriod(period);
-    //     const periodTimestamps = period.toTimestamps();
-    //     drillDownFilter.merge({
-    //         startTimestamp: periodTimestamps.startTimestamp,
-    //         endTimestamp: periodTimestamps.endTimestamp,
-    //     })
-    // }
 
-    const canAddToDashboard = metric.exists() && dashboards.length > 0;
+            {/*{isTimeSeries && (*/}
+            {/*    <>*/}
+            {/*        <span className="mr-4 color-gray-medium">Visualization</span>*/}
+            {/*        <SegmentSelection*/}
+            {/*            name="viewType"*/}
+            {/*            className="my-3"*/}
+            {/*            primary*/}
+            {/*            size="small"*/}
+            {/*            onSelect={ changeViewType }*/}
+            {/*            value={{ value: metric.viewType }}*/}
+            {/*            list={ [*/}
+            {/*                { value: 'lineChart', name: 'Chart', icon: 'graph-up-arrow' },*/}
+            {/*                { value: 'progress', name: 'Progress', icon: 'hash' },*/}
+            {/*            ]}*/}
+            {/*        />*/}
+            {/*    </>*/}
+            {/*)}*/}
 
-    return useObserver(() => (
-        <>
-        <div className={cn(className, 'bg-white rounded border')}>
-            <div className="flex items-center justify-between px-4 pt-2">
-                <h2 className="text-2xl">
-                    {props.name}
-                </h2>
-                <div className="flex items-center">
-                    {isTimeSeries && (
-                        <>
-                            <span className="mr-4 color-gray-medium">Visualization</span>
-                            <SegmentSelection
-                                name="viewType"
-                                className="my-3"
-                                primary
-                                icons={true}
-                                onSelect={ chagneViewType }
-                                value={{ value: metric.viewType }}
-                                list={ [
-                                    { value: 'lineChart', name: 'Chart', icon: 'graph-up-arrow' },
-                                    { value: 'progress', name: 'Progress', icon: 'hash' },
-                                ]}
-                            />
-                        </>
-                    )}
+            {/*{!disableVisualization && isTable && (*/}
+            {/*    <>*/}
+            {/*        <span className="mr-4 color-gray-medium">Visualization</span>*/}
+            {/*        <SegmentSelection*/}
+            {/*            name="viewType"*/}
+            {/*            className="my-3"*/}
+            {/*            primary={true}*/}
+            {/*            size="small"*/}
+            {/*            onSelect={ changeViewType }*/}
+            {/*            value={{ value: metric.viewType }}*/}
+            {/*            list={[*/}
+            {/*                { value: 'table', name: 'Table', icon: 'table' },*/}
+            {/*                { value: 'pieChart', name: 'Chart', icon: 'pie-chart-fill' },*/}
+            {/*            ]}*/}
+            {/*            disabledMessage="Chart view is not supported"*/}
+            {/*        />*/}
+            {/*    </>*/}
+            {/*)}*/}
 
-                    {!disableVisualization && isTable && (
-                        <>
-                            <span className="mr-4 color-gray-medium">Visualization</span>
-                            <SegmentSelection
-                                name="viewType"
-                                className="my-3"
-                                primary={true}
-                                icons={true}
-                                onSelect={ chagneViewType }
-                                value={{ value: metric.viewType }}
-                                list={[
-                                    { value: 'table', name: 'Table', icon: 'table' },
-                                    { value: 'pieChart', name: 'Chart', icon: 'pie-chart-fill' },
-                                ]}
-                                disabledMessage="Chart view is not supported"
-                            />
-                        </>
-                    )}
-                    <div className="mx-4" />
-                    <WidgetDateRange />
-                    {/* add to dashboard */}
-                    {metric.exists() && (
-                        <Button
-                        variant="text-primary"
-                        className="ml-2 p-0"
-                        onClick={() => setShowDashboardSelectionModal(true)}
-                        disabled={!canAddToDashboard}
-                    > 
-                        <Icon name="columns-gap-filled" size="14" className="mr-2" color="teal"/>
-                        Add to Dashboard
-                    </Button>
-                    )}
-                </div>
-            </div>
-            <div className="p-4 pt-0">
-                <WidgetWrapper widget={metric} isPreview={true} isWidget={false} hideName />
-            </div>
+            {/*{isRetention && (*/}
+            {/*    <>*/}
+            {/*    <span className="mr-4 color-gray-medium">Visualization</span>*/}
+            {/*    <SegmentSelection*/}
+            {/*        name="viewType"*/}
+            {/*        className="my-3"*/}
+            {/*        primary={true}*/}
+            {/*        size="small"*/}
+            {/*        onSelect={ changeViewType }*/}
+            {/*        value={{ value: metric.viewType }}*/}
+            {/*        list={[*/}
+            {/*            { value: 'trend', name: 'Trend', icon: 'graph-up-arrow' },*/}
+            {/*            { value: 'cohort', name: 'Cohort', icon: 'dice-3' },*/}
+            {/*        ]}*/}
+            {/*        disabledMessage="Chart view is not supported"*/}
+            {/*    />*/}
+            {/*</>*/}
+            {/*)}*/}
+
+
+
+            {/* add to dashboard */}
+            {/*{metric.exists() && (*/}
+            {/*    <AddToDashboardButton metricId={metric.metricId}/>*/}
+            {/*)}*/}
+          </div>
         </div>
-        { canAddToDashboard && (
-            <DashboardSelectionModal
-                metricId={metric.metricId}
-                show={showDashboardSelectionModal}
-                closeHandler={() => setShowDashboardSelectionModal(false)}
-            />
-        )}
-        </>
-    ));
+        <div className="pt-0">
+          <WidgetWrapper
+            widget={metric}
+            isPreview={true}
+            isWidget={false}
+            hideName
+          />
+        </div>
+      </div>
+    </>
+  );
 }
 
-export default WidgetPreview;
+export default observer(WidgetPreview);

@@ -63,13 +63,9 @@ spec:
               {{- end }}
             - name: AWS_ENDPOINT
               value: '{{ .Values.global.s3.endpoint }}'
-            - name: AWS_REGION_WEB
+            - name: AWS_REGION
               value: '{{ .Values.global.s3.region }}'
-            - name: AWS_REGION_IOS
-              value: '{{ .Values.global.s3.region }}'
-            - name: S3_BUCKET_WEB
-              value: {{ .Values.global.s3.recordingsBucket }}
-            - name: S3_BUCKET_IOS
+            - name: BUCKET_NAME
               value: {{ .Values.global.s3.recordingsBucket }}
             - name: LICENSE_KEY
               value: '{{ .Values.global.enterpriseEditionLicense }}'
@@ -78,6 +74,10 @@ spec:
             - name: KAFKA_USE_SSL
               value: '{{ .Values.global.kafka.kafkaUseSsl }}'
             {{- include "openreplay.env.redis_string" .Values.global.redis | nindent 12 }}
+            {{- range $key, $val := .Values.global.env }}
+            - name: {{ $key }}
+              value: '{{ $val }}'
+            {{- end }}
             {{- range $key, $val := .Values.env }}
             - name: {{ $key }}
               value: '{{ $val }}'
@@ -105,7 +105,7 @@ spec:
       - name: datadir
         hostPath:
           # Ensure the file directory is created.
-          path: {{ .Values.pvc.hostMountPath }}
+          path: {{ tpl .Values.pvc.hostMountPath . }}
           type: DirectoryOrCreate
       {{- else }}
       volumes:

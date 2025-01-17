@@ -1,7 +1,6 @@
 import React from 'react';
 import { Icon } from 'UI';
 import { withRouter } from 'react-router-dom';
-import ProjectCodeSnippet from 'App/components/Onboarding/components/OnboardingTabs/ProjectCodeSnippet';
 
 interface Props {
   history: any;
@@ -19,7 +18,7 @@ function PreferencesView(props: Props) {
 
       <div className="flex items-center p-3 text-lg">
         <Icon name="info-circle" size="16" color="gray-dark" />
-        <span className="ml-2">Changes applied at organization level</span>
+        <span className="ml-2">Any changes will be put into effect across your organization.</span>
       </div>
     </>
   );

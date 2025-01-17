@@ -1,13 +1,11 @@
 import React from 'react';
-import { JSONTree, Button } from 'UI';
+import { JSONTree } from 'UI';
 import cn from 'classnames';
 
 export default class GQLDetails extends React.PureComponent {
   render() {
     const {
       gql: { variables, response, duration, operationKind, operationName },
-      nextClick,
-      prevClick,
       first = false,
       last = false,
     } = this.props;
@@ -37,7 +35,7 @@ export default class GQLDetails extends React.PureComponent {
           </div>
         </div>
 
-        <div style={{ height: 'calc(100vh - 314px)', overflowY: 'auto' }}>
+        <div style={{ height: 'calc(100vh - 364px)', overflowY: 'auto' }}>
           <div>
             <div className="flex justify-between items-start mt-6 mb-2">
               <h5 className="mt-1 mr-1">{'Variables'}</h5>
@@ -56,15 +54,6 @@ export default class GQLDetails extends React.PureComponent {
               {jsonResponse === undefined ? response : <JSONTree src={jsonResponse} />}
             </div>
           </div>
-        </div>
-
-        <div className="flex justify-between absolute bottom-0 left-0 right-0 p-3 border-t bg-white">
-          <Button variant="outline" onClick={prevClick} disabled={first}>
-            Prev
-          </Button>
-          <Button variant="outline" onClick={nextClick} disabled={last}>
-            Next
-          </Button>
         </div>
       </div>
     );

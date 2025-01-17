@@ -3,12 +3,14 @@ package kafka
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"openreplay/backend/pkg/env"
 	"openreplay/backend/pkg/messages"
+	"openreplay/backend/pkg/queue/types"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/pkg/errors"
 )
 
@@ -20,6 +22,7 @@ type Consumer struct {
 	commitTicker      *time.Ticker
 	pollTimeout       uint
 	events            chan interface{}
+	rebalanced        chan *types.PartitionsRebalancedEvent
 	lastReceivedPrtTs map[int32]int64
 }
 
@@ -39,6 +42,7 @@ func NewConsumer(
 		"go.application.rebalance.enable": true,
 		"max.poll.interval.ms":            env.Int("KAFKA_MAX_POLL_INTERVAL_MS"),
 		"max.partition.fetch.bytes":       messageSizeLimit,
+		"go.logs.channel.enable":          true,
 	}
 	// Apply ssl configuration
 	if env.Bool("KAFKA_USE_SSL") {
@@ -72,7 +76,8 @@ func NewConsumer(
 		messageIterator:   messageIterator,
 		commitTicker:      commitTicker,
 		pollTimeout:       200,
-		events:            make(chan interface{}, 4),
+		events:            make(chan interface{}, 32),
+		rebalanced:        make(chan *types.PartitionsRebalancedEvent, 32),
 		lastReceivedPrtTs: make(map[int32]int64, 16),
 	}
 
@@ -87,7 +92,17 @@ func NewConsumer(
 	if err := c.Subscribe(subREx, consumer.reBalanceCallback); err != nil {
 		log.Fatalln(err)
 	}
-
+	go func() {
+		for {
+			logMsg := <-consumer.c.Logs()
+			if logMsg.Tag == "MAXPOLL" && strings.Contains(logMsg.Message, "leaving group") {
+				// By some reason service logic took too much time and was kicked out from the group
+				log.Printf("Kafka consumer left the group, exiting...")
+				os.Exit(1)
+			}
+			log.Printf("Kafka consumer log: %s", logMsg.String())
+		}
+	}()
 	return consumer
 }
 
@@ -96,15 +111,25 @@ func (consumer *Consumer) reBalanceCallback(_ *kafka.Consumer, e kafka.Event) er
 	case kafka.RevokedPartitions:
 		// receive before re-balancing partitions; stop consuming messages and commit current state
 		consumer.events <- evt.String()
+		parts := make([]uint64, len(evt.Partitions))
+		for i, p := range evt.Partitions {
+			parts[i] = uint64(p.Partition)
+		}
+		consumer.rebalanced <- &types.PartitionsRebalancedEvent{Type: types.RebalanceTypeRevoke, Partitions: parts}
 	case kafka.AssignedPartitions:
 		// receive after re-balancing partitions; continue consuming messages
-		//consumer.events <- evt.String()
+		consumer.events <- evt.String()
+		parts := make([]uint64, len(evt.Partitions))
+		for i, p := range evt.Partitions {
+			parts[i] = uint64(p.Partition)
+		}
+		consumer.rebalanced <- &types.PartitionsRebalancedEvent{Type: types.RebalanceTypeAssign, Partitions: parts}
 	}
 	return nil
 }
 
-func (consumer *Consumer) Rebalanced() <-chan interface{} {
-	return consumer.events
+func (consumer *Consumer) Rebalanced() <-chan *types.PartitionsRebalancedEvent {
+	return consumer.rebalanced
 }
 
 func (consumer *Consumer) Commit() error {
@@ -120,7 +145,6 @@ func (consumer *Consumer) commitAtTimestamps(
 	if err != nil {
 		return err
 	}
-	logPartitions("Actually assigned:", assigned)
 
 	var timestamps []kafka.TopicPartition
 	for _, p := range assigned { // p is a copy here since it is not a pointer
@@ -142,7 +166,6 @@ func (consumer *Consumer) commitAtTimestamps(
 		if err != nil {
 			return errors.Wrap(err, "Kafka Consumer retrieving committed error")
 		}
-		logPartitions("Actually committed:", committed)
 		for _, comm := range committed {
 			if comm.Offset == kafka.OffsetStored ||
 				comm.Offset == kafka.OffsetInvalid ||

@@ -2,7 +2,7 @@ export enum FilterCategory {
   INTERACTIONS = 'Interactions',
   GEAR = 'Gear',
   RECORDING_ATTRIBUTES = 'Recording Attributes',
-  JAVASCRIPT = 'Javascript',
+  TECHNICAL = 'Technical',
   USER = 'User Identification',
   METADATA = 'Session & User Metadata',
   PERFORMANCE = 'Performance',
@@ -32,6 +32,10 @@ export const setQueryParamKeyFromFilterkey = (filterKey: string) => {
       return 'revid';
     case FilterKey.USER_COUNTRY:
       return 'country';
+    case FilterKey.USER_CITY:
+      return 'city';
+    case FilterKey.USER_STATE:
+      return 'state';
     case FilterKey.REFERRER:
       return 'ref';
     case FilterKey.CUSTOM:
@@ -56,6 +60,12 @@ export const setQueryParamKeyFromFilterkey = (filterKey: string) => {
       return 'amem';
     case FilterKey.FETCH_FAILED:
       return 'ff';
+    case FilterKey.DURATION:
+      return 'duration';
+    case FilterKey.FEATURE_FLAG:
+      return 'feature_flag';
+    case FilterKey.TAGGED_ELEMENT:
+      return 'tnw'
   }
 };
 
@@ -95,6 +105,12 @@ export const getFilterKeyTypeByKey = (key: string) => {
     case 'country':
     case 'userCountry':
       return FilterKey.USER_COUNTRY;
+    case 'city':
+    case 'userCity':
+      return FilterKey.USER_CITY;
+    case 'state':
+    case 'userState':
+      return FilterKey.USER_STATE;
     case 'ref':
     case 'referrer':
       return FilterKey.REFERRER;
@@ -131,6 +147,12 @@ export const getFilterKeyTypeByKey = (key: string) => {
     case 'ff':
     case 'fetchFailed':
       return FilterKey.FETCH_FAILED;
+    case 'duration':
+      return FilterKey.DURATION;
+    case FilterKey.FEATURE_FLAG:
+      return 'feature_flag';
+    case 'tnw':
+      return FilterKey.TAGGED_ELEMENT
   }
 };
 
@@ -143,10 +165,19 @@ export enum IssueType {
   MEMORY = 'memory',
   CPU = 'cpu',
   SLOW_RESOURCE = 'slow_resource',
-  SLOW_PAGE_LOAD = 'slow_page_load',
+  SLOW_PAGE_LOAD = 'slow_pageLoad',
   CRASH = 'crash',
   CUSTOM = 'custom',
   JS_EXCEPTION = 'js_exception',
+
+  MOUSE_THRASHING = 'mouse_thrashing',
+}
+
+export enum IssueCategory {
+  RESOURCES = 'resources',
+  NETWORK = 'network',
+  RAGE = 'rage',
+  ERRORS = 'errors'
 }
 
 export enum FilterType {
@@ -165,59 +196,119 @@ export enum FilterType {
 }
 
 export enum FilterKey {
-  ERROR = 'ERROR',
-  MISSING_RESOURCE = 'MISSING_RESOURCE',
-  SLOW_SESSION = 'SLOW_SESSION',
-  CLICK_RAGE = 'CLICK_RAGE',
-  CLICK = 'CLICK',
-  INPUT = 'INPUT',
-  LOCATION = 'LOCATION',
-  VIEW = 'VIEW',
-  CONSOLE = 'CONSOLE',
-  METADATA = 'METADATA',
-  CUSTOM = 'CUSTOM',
-  URL = 'URL',
-  USER_BROWSER = 'USERBROWSER',
-  USER_OS = 'USEROS',
-  USER_DEVICE = 'USERDEVICE',
-  PLATFORM = 'PLATFORM',
-  DURATION = 'DURATION',
-  REFERRER = 'REFERRER',
-  USER_COUNTRY = 'USERCOUNTRY',
-  JOURNEY = 'JOURNEY',
-  REQUEST = 'REQUEST',
-  GRAPHQL = 'GRAPHQL',
-  STATEACTION = 'STATEACTION',
-  REVID = 'REVID',
-  USERANONYMOUSID = 'USERANONYMOUSID',
-  USERID = 'USERID',
-  ISSUE = 'ISSUE',
-  EVENTS_COUNT = 'EVENTS_COUNT',
-  UTM_SOURCE = 'UTM_SOURCE',
-  UTM_MEDIUM = 'UTM_MEDIUM',
-  UTM_CAMPAIGN = 'UTM_CAMPAIGN',
+  CLICK_MOBILE = 'clickMobile',
+  INPUT_MOBILE = 'inputMobile',
+  VIEW_MOBILE = 'viewMobile',
+  CUSTOM_MOBILE = 'customMobile',
+  REQUEST_MOBILE = 'requestMobile',
+  ERROR_MOBILE = 'errorMobile',
+  SWIPE_MOBILE = 'swipeMobile',
 
-  DOM_COMPLETE = 'DOM_COMPLETE',
-  LARGEST_CONTENTFUL_PAINT_TIME = 'LARGEST_CONTENTFUL_PAINT_TIME',
-  TIME_BETWEEN_EVENTS = 'TIME_BETWEEN_EVENTS',
-  TTFB = 'TTFB',
-  AVG_CPU_LOAD = 'AVG_CPU_LOAD',
-  AVG_MEMORY_USAGE = 'AVG_MEMORY_USAGE',
-  FETCH_FAILED = 'FETCH_FAILED',
+  ERROR = 'error',
+  MISSING_RESOURCE = 'missingResource',
+  SLOW_SESSION = 'slowSession',
+  CLICK_RAGE = 'clickRage',
+  CLICK = 'click',
+  INPUT = 'input',
+  LOCATION = 'location',
+  VIEW = 'view',
+  CONSOLE = 'console',
+  METADATA = 'metadata',
+  CUSTOM = 'custom',
+  URL = 'url',
+  USER_BROWSER = 'userBrowser',
+  USER_OS = 'userOs',
+  USER_DEVICE = 'userDevice',
+  PLATFORM = 'platform',
+  DURATION = 'duration',
+  REFERRER = 'referrer',
+  USER_COUNTRY = 'userCountry',
+  USER_CITY = 'userCity',
+  USER_STATE = 'userState',
+  JOURNEY = 'journey',
+  REQUEST = 'request',
+  GRAPHQL = 'graphql',
+  STATEACTION = 'stateAction',
+  REVID = 'revId',
+  USERANONYMOUSID = 'userAnonymousId',
+  USERID = 'userId',
+  ISSUE = 'issue',
+  EVENTS_COUNT = 'eventsCount',
+  UTM_SOURCE = 'utmSource',
+  UTM_MEDIUM = 'utmMedium',
+  UTM_CAMPAIGN = 'utmCampaign',
 
-  FETCH = 'FETCH',
-  FETCH_URL = 'FETCH_URL',
-  FETCH_STATUS_CODE = 'FETCH_STATUS_CODE',
-  FETCH_METHOD = 'FETCH_METHOD',
-  FETCH_DURATION = 'FETCH_DURATION',
-  FETCH_REQUEST_BODY = 'FETCH_REQUEST_BODY',
-  FETCH_RESPONSE_BODY = 'FETCH_RESPONSE_BODY',
+  DOM_COMPLETE = 'domComplete',
+  LARGEST_CONTENTFUL_PAINT_TIME = 'largestContentfulPaintTime',
+  TIME_BETWEEN_EVENTS = 'timeBetweenEvents',
+  TTFB = 'ttfb',
+  AVG_CPU_LOAD = 'avgCpuLoad',
+  AVG_MEMORY_USAGE = 'avgMemoryUsage',
+  FETCH_FAILED = 'fetchFailed',
 
-  GRAPHQL_NAME = 'GRAPHQL_NAME',
-  GRAPHQL_METHOD = 'GRAPHQL_METHOD',
-  GRAPHQL_REQUEST_BODY = 'GRAPHQL_REQUEST_BODY',
-  GRAPHQL_RESPONSE_BODY = 'GRAPHQL_RESPONSE_BODY',
+  FETCH = 'fetch',
+  FETCH_URL = 'fetchUrl',
+  FETCH_STATUS_CODE = 'fetchStatusCode',
+  FETCH_METHOD = 'fetchMethod',
+  FETCH_DURATION = 'fetchDuration',
+  FETCH_REQUEST_BODY = 'fetchRequestBody',
+  FETCH_RESPONSE_BODY = 'fetchResponseBody',
 
-  SESSIONS = 'SESSIONS',
-  ERRORS = 'js_exception',
+  GRAPHQL_NAME = 'graphqlName',
+  GRAPHQL_METHOD = 'graphqlMethod',
+  GRAPHQL_REQUEST_BODY = 'graphqlRequestBody',
+  GRAPHQL_RESPONSE_BODY = 'graphqlResponseBody',
+
+  SESSIONS = 'sessions',
+  ERRORS = 'jsException',
+
+  RESOURCES_COUNT_BY_TYPE = 'resourcesCountByType',
+  RESOURCES_LOADING_TIME = 'resourcesLoadingTime',
+  AVG_CPU = 'avgCpu',
+  AVG_DOM_CONTENT_LOADED = 'avgDomContentLoaded',
+  AVG_DOM_CONTENT_LOAD_START = 'avgDomContentLoadStart',
+  AVG_FIRST_CONTENTFUL_PIXEL = 'avgFirstContentfulPixel',
+  AVG_FIRST_PAINT = 'avgFirstPaint',
+  AVG_FPS = 'avgFps',
+  AVG_IMAGE_LOAD_TIME = 'avgImageLoadTime',
+  AVG_PAGE_LOAD_TIME = 'avgPageLoadTime',
+  AVG_PAGES_DOM_BUILD_TIME = 'avgPagesDomBuildtime',
+  AVG_PAGES_RESPONSE_TIME = 'avgPagesResponseTime',
+  AVG_REQUEST_LOADT_IME = 'avgRequestLoadTime',
+  AVG_RESPONSE_TIME = 'avgResponseTime',
+  AVG_SESSION_DURATION = 'avgSessionDuration',
+  AVG_TILL_FIRST_BYTE = 'avgTillFirstByte',
+  AVG_TIME_TO_INTERACTIVE = 'avgTimeToInteractive',
+  AVG_TIME_TO_RENDER = 'avgTimeToRender',
+  AVG_USED_JS_HEAP_SIZE = 'avgUsedJsHeapSize',
+  AVG_VISITED_PAGES = 'avgVisitedPages',
+  COUNT_REQUESTS = 'countRequests',
+  COUNT_SESSIONS = 'countSessions',
+
+  // Errors
+  RESOURCES_BY_PARTY = 'resourcesByParty',
+  ERRORS_PER_DOMAINS = 'errorsPerDomains',
+  ERRORS_PER_TYPE = 'errorsPerType',
+  CALLS_ERRORS = 'callsErrors',
+  DOMAINS_ERRORS_4XX = 'domainsErrors4xx',
+  DOMAINS_ERRORS_5XX = 'domainsErrors5xx',
+  IMPACTED_SESSIONS_BY_JS_ERRORS = 'impactedSessionsByJsErrors',
+
+  // Performance
+  CPU = 'cpu',
+  CRASHES = 'crashes',
+  FPS = 'fps',
+  PAGES_DOM_BUILD_TIME = 'pagesDomBuildtime',
+  MEMORY_CONSUMPTION = 'memoryConsumption',
+  PAGES_RESPONSE_TIME = 'pagesResponseTime',
+  PAGES_RESPONSE_TIME_DISTRIBUTION = 'pagesResponseTimeDistribution',
+  SESSIONS_PER_BROWSER = 'sessionsPerBrowser',
+  SLOWEST_DOMAINS = 'slowestDomains',
+  SPEED_LOCATION = 'speedLocation',
+  TIME_TO_RENDER = 'timeToRender',
+  IMPACTED_SESSIONS_BY_SLOW_PAGES = 'impactedSessionsBySlowPages',
+
+  CLICKMAP_URL = 'clickMapUrl',
+  FEATURE_FLAG = 'featureFlag',
+  TAGGED_ELEMENT = 'tag',
 }

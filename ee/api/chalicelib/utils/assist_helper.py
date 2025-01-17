@@ -5,7 +5,7 @@ from time import time
 
 from decouple import config
 
-from chalicelib.core import assist
+from chalicelib.core import assist_ice
 from chalicelib.utils import helper_ee
 
 
@@ -29,7 +29,7 @@ def get_temporary_credentials():
 
 
 def get_full_config():
-    servers = assist.get_ice_servers()
+    servers = assist_ice.get_ice_servers()
     if servers is None:
         return None
     servers = servers.split("|")
@@ -37,13 +37,16 @@ def get_full_config():
     if __get_secret() is not None:
         for i in range(len(servers)):
             url = servers[i].split(",")[0]
-            servers[i] = {"url": url} if url.lower().startswith("stun") else {"url": url, **credentials}
+            # servers[i] = {"url": url} if url.lower().startswith("stun") else {"url": url, **credentials}
+            servers[i] = {"urls": url} if url.lower().startswith("stun") else {"urls": url, **credentials}
     else:
         for i in range(len(servers)):
             s = servers[i].split(",")
             if len(s) == 3:
-                servers[i] = {"url": s[0], "username": s[1], "credential": s[2]}
+                # servers[i] = {"url": s[0], "username": s[1], "credential": s[2]}
+                servers[i] = {"urls": s[0], "username": s[1], "credential": s[2]}
             else:
-                servers[i] = {"url": s[0]}
+                # servers[i] = {"url": s[0]}
+                servers[i] = {"urls": s[0]}
 
     return servers
